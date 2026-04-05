@@ -1,0 +1,185 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  OWNER
+  MANAGER
+  EDITOR
+  VIEWER
+}
+
+enum PlanType {
+  STARTER
+  GROWTH
+  PRO
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  TRIALING
+}
+
+enum PostStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  SCHEDULED
+  PUBLISHED
+  FAILED
+  REJECTED
+}
+
+enum Platform {
+  INSTAGRAM
+  FACEBOOK
+  TIKTOK
+  X
+  LINKEDIN
+  YOUTUBE
+}
+
+enum AutomationFrequency {
+  DAILY
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+  CUSTOM
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  avatar       String?
+  isAdmin      Boolean  @default(false)
+  isSuspended  Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  companies CompanyMember[]
+  posts     Post[]          @relation("PostCreator")
+  approved  Post[]          @relation("PostApprover")
+}
+
+model Company {
+  id        String   @id @default(cuid())
+  name      String
+  website   String?
+  logoUrl   String?
+  brandData Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members        CompanyMember[]
+  subscription   Subscription?
+  socialAccounts SocialAccount[]
+  posts          Post[]
+  automations    Automation[]
+}
+
+model CompanyMember {
+  id        String   @id @default(cuid())
+  companyId String
+  userId    String
+  role      Role     @default(VIEWER)
+  canApprove Boolean @default(false)
+  joinedAt  DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, userId])
+}
+
+model Subscription {
+  id                   String             @id @default(cuid())
+  companyId            String             @unique
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  plan                 PlanType           @default(STARTER)
+  status               SubscriptionStatus @default(ACTIVE)
+  postsUsedThisMonth   Int                @default(0)
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+}
+
+model SocialAccount {
+  id           String    @id @default(cuid())
+  companyId    String
+  platform     Platform
+  accountId    String
+  accountName  String
+  accessToken  String
+  refreshToken String?
+  tokenExpiry  DateTime?
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  posts   Post[]
+
+  @@unique([companyId, platform, accountId])
+}
+
+model Post {
+  id              String     @id @default(cuid())
+  companyId       String
+  creatorId       String
+  approverId      String?
+  socialAccountId String?
+  content         String
+  mediaUrls       String[]   @default([])
+  hashtags        String[]   @default([])
+  platform        Platform
+  status          PostStatus @default(DRAFT)
+  scheduledFor    DateTime?
+  publishedAt     DateTime?
+  failureReason   String?
+  retryCount      Int        @default(0)
+  externalId      String?
+  isAiGenerated   Boolean    @default(false)
+  aiPrompt        String?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  company       Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  creator       User           @relation("PostCreator", fields: [creatorId], references: [id])
+  approver      User?          @relation("PostApprover", fields: [approverId], references: [id])
+  socialAccount SocialAccount? @relation(fields: [socialAccountId], references: [id])
+}
+
+model Automation {
+  id          String              @id @default(cuid())
+  companyId   String
+  name        String
+  description String?
+  platforms   Platform[]
+  frequency   AutomationFrequency @default(WEEKLY)
+  cronExpr    String?
+  postingTime String              @default("09:00")
+  timezone    String              @default("UTC")
+  isActive    Boolean             @default(true)
+  contentType String              @default("ai")
+  aiPrompt    String?
+  lastRunAt   DateTime?
+  nextRunAt   DateTime?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+}
