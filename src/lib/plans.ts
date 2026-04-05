@@ -5,14 +5,14 @@ export const PLANS = {
   STARTER: {
     name: 'Starter',
     price: 29,
-    posts: 30,
+    posts: 10,
     companies: 1,
     seats: 2,
   },
   GROWTH: {
     name: 'Growth',
     price: 79,
-    posts: 150,
+    posts: 60,
     companies: 3,
     seats: 5,
   },
