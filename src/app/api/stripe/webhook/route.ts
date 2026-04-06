@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { stripe } from '@/lib/stripe'
+import { getStripe } from '@/lib/stripe'
 import { prisma } from '@/lib/prisma'
 import type Stripe from 'stripe'
 
 export async function POST(request: NextRequest) {
+  const stripe = getStripe()
+  if (!stripe) {
+    return NextResponse.json({ error: 'Stripe not configured' }, { status: 503 })
+  }
+
   const body = await request.text()
   const signature = request.headers.get('stripe-signature')
 
