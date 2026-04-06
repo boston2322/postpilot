@@ -129,25 +129,30 @@ export default function AdminCompaniesPage() {
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      {company.subscription ? (
-                        <div className="flex flex-col gap-1">
-                          <select
-                            value={company.subscription.plan}
-                            onChange={(e) => handlePlanChange(company.id, e.target.value)}
-                            disabled={actionLoading === company.id}
-                            className={`text-xs border rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400 ${company.subscription.plan === 'FREE' ? 'border-emerald-300 bg-emerald-50 text-emerald-700 font-semibold' : 'border-slate-200'}`}
-                          >
-                            {PLANS.map((p) => (
-                              <option key={p} value={p}>{p === 'FREE' ? '🎁 FREE' : p}</option>
-                            ))}
-                          </select>
+                      <div className="flex flex-col gap-1">
+                        <select
+                          value={company.subscription?.plan || ''}
+                          onChange={(e) => e.target.value && handlePlanChange(company.id, e.target.value)}
+                          disabled={actionLoading === company.id}
+                          className={`text-xs border rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400 ${
+                            company.subscription?.plan === 'FREE'
+                              ? 'border-emerald-300 bg-emerald-50 text-emerald-700 font-semibold'
+                              : 'border-slate-200'
+                          }`}
+                        >
+                          {!company.subscription && (
+                            <option value="">— None —</option>
+                          )}
+                          {PLANS.map((p) => (
+                            <option key={p} value={p}>{p === 'FREE' ? '🎁 FREE' : p}</option>
+                          ))}
+                        </select>
+                        {company.subscription && (
                           <span className={`text-xs px-1.5 py-0.5 rounded-full w-fit ${STATUS_COLORS[company.subscription.status] || 'bg-gray-100 text-gray-600'}`}>
                             {company.subscription.status}
                           </span>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-slate-400">No subscription</span>
-                      )}
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <div className="text-xs text-slate-600">

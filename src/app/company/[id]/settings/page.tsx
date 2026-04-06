@@ -37,9 +37,17 @@ type Subscription = {
 const PLATFORMS = ['INSTAGRAM', 'FACEBOOK', 'X', 'LINKEDIN', 'TIKTOK']
 
 const PLAN_COLORS: Record<string, string> = {
+  FREE: 'bg-emerald-100 text-emerald-700',
   STARTER: 'bg-blue-100 text-blue-700',
   GROWTH: 'bg-purple-100 text-purple-700',
   PRO: 'bg-indigo-100 text-indigo-700',
+}
+
+const STATUS_COLORS: Record<string, string> = {
+  ACTIVE: 'bg-green-100 text-green-700',
+  TRIALING: 'bg-blue-100 text-blue-700',
+  PAST_DUE: 'bg-yellow-100 text-yellow-700',
+  CANCELED: 'bg-red-100 text-red-700',
 }
 
 export default function SettingsPage() {
@@ -425,26 +433,28 @@ export default function SettingsPage() {
       {/* Subscription Tab */}
       {activeTab === 'subscription' && (
         <div className="space-y-4">
-          {subscription && subscription.status === 'ACTIVE' ? (
+          {subscription ? (
             <div className="bg-white rounded-2xl border border-slate-200 p-6">
               <div className="flex items-start justify-between mb-4">
                 <div>
                   <p className="text-sm text-slate-500 mb-1">Current Plan</p>
                   <div className="flex items-center gap-2">
-                    <span className={`text-lg font-bold ${PLAN_COLORS[subscription.plan] ? 'text-slate-900' : 'text-slate-900'}`}>
+                    <span className="text-lg font-bold text-slate-900">
                       {PLANS[subscription.plan as keyof typeof PLANS]?.name || subscription.plan}
                     </span>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PLAN_COLORS[subscription.plan]}`}>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PLAN_COLORS[subscription.plan] || 'bg-slate-100 text-slate-600'}`}>
                       {subscription.plan}
                     </span>
                   </div>
                 </div>
-                <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-medium">Active</span>
+                <span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_COLORS[subscription.status] || 'bg-slate-100 text-slate-600'}`}>
+                  {subscription.status}
+                </span>
               </div>
 
               <div className="grid grid-cols-2 gap-4 mb-6">
                 <div className="bg-slate-50 rounded-xl p-3">
-                  <p className="text-xs text-slate-500 mb-0.5">Posts Used</p>
+                  <p className="text-xs text-slate-500 mb-0.5">Posts Used This Month</p>
                   <p className="font-semibold text-slate-900">
                     {subscription.postsUsedThisMonth} / {
                       PLANS[subscription.plan as keyof typeof PLANS]?.posts === Infinity
@@ -453,23 +463,47 @@ export default function SettingsPage() {
                     }
                   </p>
                 </div>
-                {subscription.currentPeriodEnd && (
+                {subscription.currentPeriodEnd ? (
                   <div className="bg-slate-50 rounded-xl p-3">
                     <p className="text-xs text-slate-500 mb-0.5">Renews</p>
                     <p className="font-semibold text-slate-900">
                       {new Date(subscription.currentPeriodEnd).toLocaleDateString()}
                     </p>
                   </div>
+                ) : (
+                  <div className="bg-slate-50 rounded-xl p-3">
+                    <p className="text-xs text-slate-500 mb-0.5">Billing</p>
+                    <p className="font-semibold text-slate-900">No charge</p>
+                  </div>
                 )}
               </div>
 
-              <button
-                onClick={handlePortal}
-                disabled={portalLoading}
-                className="w-full bg-slate-900 hover:bg-slate-800 text-white font-medium py-3 rounded-xl text-sm transition-colors disabled:opacity-50"
-              >
-                {portalLoading ? 'Opening...' : 'Manage Billing & Invoices'}
-              </button>
+              {subscription.status === 'PAST_DUE' && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 mb-4 text-yellow-800 text-sm">
+                  ⚠️ Your payment is past due. Please update your payment method to keep your account active.
+                </div>
+              )}
+              {subscription.status === 'CANCELED' && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-4 text-red-700 text-sm">
+                  Your subscription has been canceled. Choose a plan below to reactivate.
+                </div>
+              )}
+
+              {/* Stripe portal — only for paying plans with a Stripe customer */}
+              {subscription.plan !== 'FREE' && subscription.stripeCustomerId && (
+                <button
+                  onClick={handlePortal}
+                  disabled={portalLoading}
+                  className="w-full bg-slate-900 hover:bg-slate-800 text-white font-medium py-3 rounded-xl text-sm transition-colors disabled:opacity-50"
+                >
+                  {portalLoading ? 'Opening...' : 'Manage Billing, Card & Invoices →'}
+                </button>
+              )}
+              {subscription.plan === 'FREE' && (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-emerald-700 text-sm text-center">
+                  🎁 You&apos;re on a complimentary Free plan — no billing required.
+                </div>
+              )}
             </div>
           ) : (
             <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 text-yellow-800 text-sm">
@@ -477,13 +511,13 @@ export default function SettingsPage() {
             </div>
           )}
 
-          {/* Plan cards */}
+          {/* Plan cards — hide FREE since it's admin-assigned only */}
           <div>
             <h2 className="text-base font-semibold text-slate-900 mb-3">
-              {subscription?.status === 'ACTIVE' ? 'Change Plan' : 'Choose a Plan'}
+              {subscription?.status === 'ACTIVE' || subscription?.status === 'TRIALING' ? 'Change Plan' : 'Choose a Plan'}
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {Object.entries(PLANS).map(([key, plan]) => (
+              {Object.entries(PLANS).filter(([key]) => key !== 'FREE').map(([key, plan]) => (
                 <div
                   key={key}
                   className={`bg-white rounded-xl border-2 p-4 ${
@@ -494,7 +528,9 @@ export default function SettingsPage() {
                     <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-medium">Current</span>
                   )}
                   <h3 className="font-bold text-slate-900 mt-2">{plan.name}</h3>
-                  <div className="text-2xl font-bold text-indigo-600 my-1">${plan.price}<span className="text-sm font-normal text-slate-500">/mo</span></div>
+                  <div className="text-2xl font-bold text-indigo-600 my-1">
+                    ${plan.price}<span className="text-sm font-normal text-slate-500">/mo</span>
+                  </div>
                   <ul className="text-xs text-slate-600 space-y-1 mb-4">
                     <li>✓ {plan.posts === Infinity ? 'Unlimited' : plan.posts} posts/mo</li>
                     <li>✓ {plan.companies === Infinity ? 'Unlimited' : plan.companies} {plan.companies === 1 ? 'company' : 'companies'}</li>
