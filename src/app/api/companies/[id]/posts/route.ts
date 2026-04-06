@@ -85,12 +85,12 @@ export async function POST(
       where: { companyId: params.id },
     })
 
-    if (!subscription || subscription.status !== 'ACTIVE') {
+    if (!subscription || (subscription.status !== 'ACTIVE' && subscription.status !== 'TRIALING')) {
       return NextResponse.json({ error: 'Active subscription required' }, { status: 403 })
     }
 
     const planData = PLANS[subscription.plan as keyof typeof PLANS]
-    if (planData.posts !== Infinity && subscription.postsUsedThisMonth >= planData.posts) {
+    if (planData && planData.posts !== Infinity && subscription.postsUsedThisMonth >= planData.posts) {
       return NextResponse.json(
         { error: `Monthly post limit of ${planData.posts} reached` },
         { status: 403 }

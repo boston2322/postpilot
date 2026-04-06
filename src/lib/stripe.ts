@@ -14,6 +14,14 @@ const PAYMENT_LINKS: Record<string, string> = {
 }
 
 export const PLANS = {
+  FREE: {
+    name: 'Free',
+    price: 0,
+    posts: Infinity,
+    companies: Infinity,
+    seats: Infinity,
+    priceId: '',
+  },
   STARTER: {
     name: 'Starter',
     price: 29,

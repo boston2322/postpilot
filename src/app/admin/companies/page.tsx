@@ -19,7 +19,14 @@ type Company = {
   }[]
 }
 
-const PLANS = ['STARTER', 'GROWTH', 'PRO']
+const PLANS = ['FREE', 'STARTER', 'GROWTH', 'PRO']
+
+const PLAN_COLORS: Record<string, string> = {
+  FREE: 'text-emerald-700 font-semibold',
+  STARTER: '',
+  GROWTH: '',
+  PRO: '',
+}
 
 const STATUS_COLORS: Record<string, string> = {
   ACTIVE: 'bg-green-100 text-green-700',
@@ -128,10 +135,10 @@ export default function AdminCompaniesPage() {
                             value={company.subscription.plan}
                             onChange={(e) => handlePlanChange(company.id, e.target.value)}
                             disabled={actionLoading === company.id}
-                            className="text-xs border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                            className={`text-xs border rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400 ${company.subscription.plan === 'FREE' ? 'border-emerald-300 bg-emerald-50 text-emerald-700 font-semibold' : 'border-slate-200'}`}
                           >
                             {PLANS.map((p) => (
-                              <option key={p} value={p}>{p}</option>
+                              <option key={p} value={p}>{p === 'FREE' ? '🎁 FREE' : p}</option>
                             ))}
                           </select>
                           <span className={`text-xs px-1.5 py-0.5 rounded-full w-fit ${STATUS_COLORS[company.subscription.status] || 'bg-gray-100 text-gray-600'}`}>

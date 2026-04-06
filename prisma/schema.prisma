@@ -16,6 +16,7 @@ enum Role {
 }
 
 enum PlanType {
+  FREE
   STARTER
   GROWTH
   PRO

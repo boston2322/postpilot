@@ -2,6 +2,13 @@
 // The Stripe instance is NOT here - use src/lib/stripe.ts for server-side Stripe operations
 
 export const PLANS = {
+  FREE: {
+    name: 'Free',
+    price: 0,
+    posts: Infinity,
+    companies: Infinity,
+    seats: Infinity,
+  },
   STARTER: {
     name: 'Starter',
     price: 29,
