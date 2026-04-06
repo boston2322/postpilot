@@ -34,8 +34,8 @@ export async function GET(
 
       const scopes =
         params.platform === 'instagram'
-          ? 'instagram_basic,instagram_content_publish,pages_read_engagement'
-          : 'pages_manage_posts,pages_read_engagement,pages_show_list'
+          ? 'instagram_content_publish,instagram_manage_insights,pages_show_list'
+          : 'pages_manage_posts,pages_show_list'
 
       authUrl = `https://www.facebook.com/v18.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scopes)}&state=${state}&response_type=code`
       break
