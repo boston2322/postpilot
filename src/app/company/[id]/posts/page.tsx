@@ -114,15 +114,24 @@ export default function PostsPage() {
           <h1 className="text-2xl font-bold text-slate-900">Posts</h1>
           <p className="text-slate-500 mt-0.5">{total} total posts</p>
         </div>
-        <Link
-          href={`/company/${companyId}/posts/new`}
-          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          Create Post
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href={`/company/${companyId}/posts/ai-wizard`}
+            className="flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:opacity-90 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-all shadow-sm"
+          >
+            <span className="text-sm">✦</span>
+            Create with AI
+          </Link>
+          <Link
+            href={`/company/${companyId}/posts/new`}
+            className="flex items-center gap-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Manual
+          </Link>
+        </div>
       </div>
 
       {/* Filter Tabs */}

@@ -55,8 +55,12 @@ export async function POST(
     }
 
     // Approve
-    const newStatus: 'APPROVED' | 'SCHEDULED' =
-      post.scheduledFor && post.socialAccountId ? 'SCHEDULED' : 'APPROVED'
+    // If has scheduledFor + socialAccount → SCHEDULED
+    // If no scheduledFor but has socialAccount → post immediately (SCHEDULED with delay 0)
+    // Otherwise → APPROVED
+    const hasSchedule = post.scheduledFor && post.socialAccountId
+    const postNow = !post.scheduledFor && post.socialAccountId
+    const newStatus: 'APPROVED' | 'SCHEDULED' = (hasSchedule || postNow) ? 'SCHEDULED' : 'APPROVED'
 
     const updated = await prisma.post.update({
       where: { id: params.postId },
@@ -67,8 +71,9 @@ export async function POST(
     })
 
     // Add to queue if scheduled
-    if (newStatus === 'SCHEDULED' && post.scheduledFor) {
-      await schedulePost(params.postId, post.scheduledFor)
+    if (newStatus === 'SCHEDULED') {
+      const publishTime = post.scheduledFor || new Date() // now if no scheduledFor
+      await schedulePost(params.postId, publishTime)
     }
 
     return NextResponse.json({ post: updated })
