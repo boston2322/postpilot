@@ -107,6 +107,7 @@ export default function AIWizardPage() {
   const [generating, setGenerating] = useState(false)
   const [generated, setGenerated] = useState<GeneratedPost | null>(null)
   const [genError, setGenError] = useState('')
+  const [suggesting, setSuggesting] = useState(false)
 
   // Step 4 state
   const [scheduledFor, setScheduledFor] = useState('')
@@ -126,6 +127,42 @@ export default function AIWizardPage() {
 
   function setAnswer(key: string, value: string | number | boolean) {
     setAnswers(prev => ({ ...prev, [key]: value }))
+  }
+
+  async function handleSuggest() {
+    if (!answers.topic || !(answers.topic as string).trim()) {
+      setGenError('Enter a topic first so AI knows what to suggest')
+      return
+    }
+    setGenError('')
+    setSuggesting(true)
+    try {
+      const res = await fetch('/api/ai/suggest-answers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: postType,
+          topic: answers.topic,
+          platform: selectedAccounts[0]?.platform,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setGenError(data.error || 'Failed to suggest answers')
+        return
+      }
+      // Merge suggestions into answers, keeping topic intact
+      setAnswers(prev => ({
+        ...prev,
+        ...Object.fromEntries(
+          Object.entries(data).filter(([k]) => k !== 'topic')
+        ),
+      }))
+    } catch {
+      setGenError('Failed to suggest answers. Please try again.')
+    } finally {
+      setSuggesting(false)
+    }
   }
 
   function toggleAccount(acc: SocialAccount) {
@@ -441,11 +478,31 @@ export default function AIWizardPage() {
         {step === 2 && (
           <div className="space-y-6">
             <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-5">
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg font-semibold text-slate-900">Tell the AI about your post</h2>
-                <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-medium">
-                  {postType === 'SINGLE' ? 'Single Image' : postType === 'CAROUSEL' ? 'Carousel' : 'Video'}
-                </span>
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg font-semibold text-slate-900">Tell the AI about your post</h2>
+                  <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-medium">
+                    {postType === 'SINGLE' ? 'Single Image' : postType === 'CAROUSEL' ? 'Carousel' : 'Video'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSuggest}
+                  disabled={suggesting || !answers.topic || !(answers.topic as string).trim()}
+                  className="flex items-center gap-1.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:opacity-90 disabled:opacity-40 text-white text-xs font-semibold px-3 py-2 rounded-lg transition-all"
+                >
+                  {suggesting ? (
+                    <>
+                      <SpinnerIcon className="w-3.5 h-3.5" />
+                      Filling in...
+                    </>
+                  ) : (
+                    <>
+                      <span>✦</span>
+                      Complete with AI
+                    </>
+                  )}
+                </button>
               </div>
 
               {/* Topic - shared by all types */}
@@ -455,17 +512,26 @@ export default function AIWizardPage() {
                   {postType === 'CAROUSEL' && "What's this carousel about? *"}
                   {postType === 'VIDEO' && "What's this video about? *"}
                 </label>
-                <input
-                  type="text"
-                  value={answers.topic as string || ''}
-                  onChange={e => setAnswer('topic', e.target.value)}
-                  className={inputClass}
-                  placeholder={
-                    postType === 'SINGLE' ? 'e.g. New product launch, summer sale, team spotlight...' :
-                    postType === 'CAROUSEL' ? 'e.g. 5 tips for better sleep, how to use our app...' :
-                    'e.g. Product demo, behind the scenes, tutorial...'
-                  }
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={answers.topic as string || ''}
+                    onChange={e => setAnswer('topic', e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && !suggesting && (answers.topic as string)?.trim() && handleSuggest()}
+                    className={inputClass}
+                    placeholder={
+                      postType === 'SINGLE' ? 'e.g. New product launch, summer sale, team spotlight...' :
+                      postType === 'CAROUSEL' ? 'e.g. 5 tips for better sleep, how to use our app...' :
+                      'e.g. Product demo, behind the scenes, tutorial...'
+                    }
+                  />
+                  {suggesting && (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                      <SpinnerIcon className="w-4 h-4 text-indigo-500" />
+                    </div>
+                  )}
+                </div>
+                <p className="text-xs text-slate-400 mt-1">Type your topic then hit <kbd className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-500 font-mono">Enter</kbd> or click <span className="text-indigo-600 font-medium">Complete with AI</span> to auto-fill everything</p>
               </div>
 
               {/* Audience */}
