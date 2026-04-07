@@ -121,6 +121,8 @@ export default function AIWizardPage() {
   const [imageError, setImageError] = useState('')
   const [websiteImages, setWebsiteImages] = useState<string[]>([])
   const [loadingWebsiteImages, setLoadingWebsiteImages] = useState(false)
+  const [regenerateFeedback, setRegenerateFeedback] = useState('')
+  const [lastImagePrompt, setLastImagePrompt] = useState('')
 
   // Step 4 state
   const [scheduledFor, setScheduledFor] = useState('')
@@ -136,6 +138,14 @@ export default function AIWizardPage() {
         if (accs.length > 0) setSelectedAccounts([accs[0]])
         if (data.company?.brandData?.tone) setBrandTone(data.company.brandData.tone)
         if (data.company?.website) setCompanyWebsite(data.company.website)
+        // Pre-fill brand audience + default to brand tone
+        if (data.company?.brandData) {
+          setAnswers(prev => ({
+            ...prev,
+            ...(data.company.brandData.audience ? { audience: data.company.brandData.audience } : {}),
+            ...(data.company.brandData.tone ? { tone: 'brand' } : {}),
+          }))
+        }
       })
       .catch(() => {})
   }, [companyId])
@@ -159,6 +169,7 @@ export default function AIWizardPage() {
           type: postType,
           topic: answers.topic,
           platform: selectedAccounts[0]?.platform,
+          companyId,
         }),
       })
       const data = await res.json()
@@ -182,9 +193,11 @@ export default function AIWizardPage() {
     }
   }
 
-  async function handleGenerateImage(promptOverride?: string) {
-    const prompt = promptOverride ?? customImagePrompt
-    if (!prompt?.trim()) return
+  async function handleGenerateImage(promptOverride?: string, feedback?: string) {
+    const basePrompt = promptOverride ?? customImagePrompt
+    if (!basePrompt?.trim()) return
+    const prompt = feedback?.trim() ? `${basePrompt}. Adjust: ${feedback}` : basePrompt
+    setLastImagePrompt(basePrompt)
     setImageError('')
     setGeneratingImage(true)
     try {
@@ -196,6 +209,7 @@ export default function AIWizardPage() {
       const data = await res.json()
       if (!res.ok) { setImageError(data.error || 'Failed to generate image'); return }
       setGenerated(prev => prev ? { ...prev, mediaUrl: data.url } : prev)
+      setRegenerateFeedback('')
     } catch {
       setImageError('Failed to generate image')
     } finally {
@@ -252,6 +266,7 @@ export default function AIWizardPage() {
         body: JSON.stringify({
           type: postType,
           platform: primaryPlatform,
+          companyId,
           answers: {
             ...answers,
             tone: answers.tone === 'brand' && brandTone ? brandTone : answers.tone,
@@ -1096,6 +1111,31 @@ export default function AIWizardPage() {
                   onChange={url => setGenerated(prev => prev ? { ...prev, mediaUrl: url } : prev)}
                   aspectRatio="1:1"
                 />
+              )}
+
+              {/* Regenerate with feedback — shows whenever an image exists */}
+              {generated?.mediaUrl && !generatingImage && imageMode !== 'custom' && imageMode !== 'website' && (
+                <div className="pt-3 border-t border-slate-100 space-y-2">
+                  <p className="text-xs font-medium text-slate-500">Not quite right?</p>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={regenerateFeedback}
+                      onChange={e => setRegenerateFeedback(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && handleGenerateImage(lastImagePrompt || generated.imagePrompt, regenerateFeedback || undefined)}
+                      className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all"
+                      placeholder="Describe what to change… (optional)"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleGenerateImage(lastImagePrompt || generated.imagePrompt, regenerateFeedback || undefined)}
+                      disabled={generatingImage}
+                      className="px-3 py-2 bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-lg hover:bg-indigo-200 transition-colors whitespace-nowrap"
+                    >
+                      ↻ Regenerate
+                    </button>
+                  </div>
+                </div>
               )}
 
               {imageError && (

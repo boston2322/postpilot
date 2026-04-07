@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
 import Groq from 'groq-sdk'
 
 function getGroq() {
@@ -28,10 +29,35 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { type, platform, answers } = body
+    const { type, platform, answers, companyId } = body
 
     if (!type || !platform || !answers) {
       return NextResponse.json({ error: 'type, platform, and answers are required' }, { status: 400 })
+    }
+
+    // Auto-fetch brand data + avoid list from DB
+    let brandContext = ''
+    let avoidInstructions = ''
+    if (companyId) {
+      try {
+        const company = await prisma.company.findUnique({
+          where: { id: companyId },
+          select: { brandData: true },
+        })
+        if (company?.brandData) {
+          const bd = company.brandData as Record<string, unknown>
+          const parts: string[] = []
+          if (bd.description) parts.push(`Brand: ${bd.description}`)
+          if (bd.tone) parts.push(`Brand Tone: ${bd.tone}`)
+          if (bd.audience) parts.push(`Target Audience: ${bd.audience}`)
+          if (bd.style) parts.push(`Content Style: ${bd.style}`)
+          if (Array.isArray(bd.keywords) && bd.keywords.length > 0)
+            parts.push(`Brand Keywords: ${(bd.keywords as string[]).join(', ')}`)
+          if (parts.length > 0) brandContext = parts.join('\n')
+          if (Array.isArray(bd.avoidList) && (bd.avoidList as string[]).length > 0)
+            avoidInstructions = `\nSTRICTLY AVOID — never include any of the following: ${(bd.avoidList as string[]).join(', ')}`
+        }
+      } catch { /* non-fatal */ }
     }
 
     const PLATFORM_STYLE: Record<string, string> = {
@@ -44,15 +70,25 @@ export async function POST(request: NextRequest) {
     }
     const platformStyle = PLATFORM_STYLE[platform.toUpperCase()] || PLATFORM_STYLE.INSTAGRAM
 
+    // Resolve 'brand' tone to the actual brand tone string
+    const effectiveTone = answers.tone === 'brand'
+      ? (brandContext.match(/Brand Tone: (.+)/)?.[1] || 'professional')
+      : (answers.tone || 'engaging')
+
+    const brandSection = brandContext
+      ? `\n--- BRAND CONTEXT (match this brand voice exactly) ---\n${brandContext}\n---`
+      : ''
+
     if (type === 'SINGLE') {
       const prompt = `You are an expert social media copywriter. Generate a ${platform} post and return ONLY valid JSON (no markdown fences, no explanation).
+${brandSection}
 
 Topic/Message: ${answers.topic}
 Target Audience: ${answers.audience || 'general audience'}
-Tone: ${answers.tone || 'engaging'}
+Tone: ${effectiveTone}
 Call to Action: ${answers.cta || 'none'}
 Additional Notes: ${answers.notes || 'none'}
-Platform Style: ${platformStyle}
+Platform Style: ${platformStyle}${avoidInstructions}
 
 Return this exact JSON:
 {
@@ -72,16 +108,17 @@ Return this exact JSON:
     }
 
     if (type === 'CAROUSEL') {
-      const slideCount = parseInt(answers.slideCount) || 5
+      const slideCount = parseInt(String(answers.slideCount)) || 5
       const prompt = `You are an expert social media content creator. Generate a ${platform} carousel post with ${slideCount} slides and return ONLY valid JSON (no markdown fences, no explanation).
+${brandSection}
 
 Topic/Theme: ${answers.topic}
 Goal: ${answers.goal || 'educate'}
 Target Audience: ${answers.audience || 'general audience'}
-Tone: ${answers.tone || 'engaging'}
+Tone: ${effectiveTone}
 Key Points to Cover: ${answers.points || 'auto-generate relevant points'}
 Include CTA slide: ${answers.includeCta !== false ? 'yes' : 'no'}
-Platform Style: ${platformStyle}
+Platform Style: ${platformStyle}${avoidInstructions}
 
 Return this exact JSON:
 {
@@ -108,15 +145,16 @@ Return this exact JSON:
 
     if (type === 'VIDEO') {
       const prompt = `You are an expert social media video scriptwriter. Generate a ${platform} video post and return ONLY valid JSON (no markdown fences, no explanation).
+${brandSection}
 
 Topic/Concept: ${answers.topic}
 Video Style: ${answers.style || 'engaging'}
 Duration: ${answers.duration || '30s'}
 Key Talking Points: ${answers.points || 'auto-generate'}
 Target Audience: ${answers.audience || 'general audience'}
-Tone: ${answers.tone || 'engaging'}
+Tone: ${effectiveTone}
 Include Captions: ${answers.includeCaptions ? 'yes' : 'no'}
-Platform Style: ${platformStyle}
+Platform Style: ${platformStyle}${avoidInstructions}
 
 Return this exact JSON:
 {

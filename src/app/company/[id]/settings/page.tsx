@@ -16,6 +16,7 @@ type Company = {
     audience?: string
     style?: string
     description?: string
+    avoidList?: string[]
   } | null
 }
 
@@ -73,6 +74,12 @@ export default function SettingsPage() {
   const [crawling, setCrawling] = useState(false)
   const [crawlMsg, setCrawlMsg] = useState('')
 
+  // Avoid list
+  const [avoidList, setAvoidList] = useState<string[]>([])
+  const [avoidInput, setAvoidInput] = useState('')
+  const [savingAvoid, setSavingAvoid] = useState(false)
+  const [avoidMsg, setAvoidMsg] = useState('')
+
   // Subscription
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null)
   const [portalLoading, setPortalLoading] = useState(false)
@@ -103,6 +110,7 @@ export default function SettingsPage() {
       setWebsite(company.website || '')
       setLogoUrl(company.logoUrl || '')
       setCrawlUrl(company.website || '')
+      setAvoidList(company.brandData?.avoidList || [])
     }
     if (accountsRes.ok) {
       const { accounts } = await accountsRes.json()
@@ -147,6 +155,30 @@ export default function SettingsPage() {
       setCrawlMsg('Failed to crawl website. Please check the URL.')
     }
     setCrawling(false)
+  }
+
+  function addAvoidItem() {
+    const val = avoidInput.trim().toLowerCase()
+    if (!val || avoidList.includes(val)) { setAvoidInput(''); return }
+    setAvoidList(prev => [...prev, val])
+    setAvoidInput('')
+  }
+
+  async function handleSaveAvoidList() {
+    setSavingAvoid(true)
+    setAvoidMsg('')
+    const res = await fetch(`/api/companies/${companyId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ avoidList }),
+    })
+    if (res.ok) {
+      setAvoidMsg('Saved!')
+      setTimeout(() => setAvoidMsg(''), 2000)
+    } else {
+      setAvoidMsg('Failed to save.')
+    }
+    setSavingAvoid(false)
   }
 
   async function handleConnectPlatform(platform: string) {
@@ -315,6 +347,63 @@ export default function SettingsPage() {
                 {crawling ? 'Analyzing...' : '✦ Analyze Brand'}
               </button>
             </form>
+          </div>
+
+          {/* Things to Avoid */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-6">
+            <h2 className="text-base font-semibold text-slate-900 mb-1">Things AI Should Avoid</h2>
+            <p className="text-sm text-slate-500 mb-4">
+              Add words, styles, or content types the AI should never use when generating posts for this brand.
+            </p>
+            <div className="flex gap-2 mb-3">
+              <input
+                type="text"
+                value={avoidInput}
+                onChange={e => setAvoidInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addAvoidItem() } }}
+                className="flex-1 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
+                placeholder='e.g. emojis, exclamation marks, slang, the word "amazing"…'
+              />
+              <button
+                type="button"
+                onClick={addAvoidItem}
+                disabled={!avoidInput.trim()}
+                className="px-4 py-2.5 bg-slate-900 text-white text-sm font-medium rounded-xl hover:bg-slate-800 disabled:opacity-40 transition-colors"
+              >
+                Add
+              </button>
+            </div>
+            {avoidList.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-4">
+                {avoidList.map(item => (
+                  <span key={item} className="flex items-center gap-1.5 bg-red-50 text-red-700 border border-red-200 text-xs px-3 py-1.5 rounded-full font-medium">
+                    {item}
+                    <button
+                      type="button"
+                      onClick={() => setAvoidList(prev => prev.filter(i => i !== item))}
+                      className="hover:text-red-900 transition-colors"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleSaveAvoidList}
+                disabled={savingAvoid}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-5 py-2.5 rounded-xl text-sm transition-colors disabled:opacity-50"
+              >
+                {savingAvoid ? 'Saving…' : 'Save Avoid List'}
+              </button>
+              {avoidMsg && (
+                <span className={`text-sm font-medium ${avoidMsg === 'Saved!' ? 'text-green-600' : 'text-red-600'}`}>
+                  {avoidMsg}
+                </span>
+              )}
+            </div>
           </div>
 
           {company?.brandData && (

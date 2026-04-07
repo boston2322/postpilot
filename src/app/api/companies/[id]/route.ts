@@ -51,7 +51,18 @@ export async function PUT(
 
   try {
     const body = await request.json()
-    const { name, website, logoUrl } = body
+    const { name, website, logoUrl, avoidList } = body
+
+    // If avoidList is provided, merge into existing brandData
+    let brandDataUpdate: Record<string, unknown> | undefined
+    if (avoidList !== undefined) {
+      const existing = await prisma.company.findUnique({
+        where: { id: params.id },
+        select: { brandData: true },
+      })
+      const existingBrand = (existing?.brandData as Record<string, unknown>) || {}
+      brandDataUpdate = { ...existingBrand, avoidList }
+    }
 
     const company = await prisma.company.update({
       where: { id: params.id },
@@ -59,6 +70,7 @@ export async function PUT(
         ...(name && { name }),
         ...(website !== undefined && { website }),
         ...(logoUrl !== undefined && { logoUrl }),
+        ...(brandDataUpdate !== undefined && { brandData: brandDataUpdate }),
       },
     })
 
