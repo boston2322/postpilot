@@ -48,6 +48,12 @@ enum Platform {
   YOUTUBE
 }
 
+enum PostType {
+  SINGLE
+  CAROUSEL
+  VIDEO
+}
+
 enum AutomationFrequency {
   DAILY
   WEEKLY
@@ -155,6 +161,8 @@ model Post {
   externalId      String?
   isAiGenerated   Boolean    @default(false)
   aiPrompt        String?
+  postType        PostType   @default(SINGLE)
+  slides          Json?
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
 

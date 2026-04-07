@@ -74,6 +74,8 @@ export async function POST(
       mediaUrls,
       socialAccountId,
       aiPrompt,
+      postType,
+      slides,
     } = body
 
     if (!content || !platform) {
@@ -117,6 +119,8 @@ export async function POST(
         scheduledFor: scheduledFor ? new Date(scheduledFor) : null,
         isAiGenerated: isAiGenerated || false,
         aiPrompt: aiPrompt || null,
+        postType: postType || 'SINGLE',
+        slides: slides || undefined,
       },
       include: {
         creator: { select: { id: true, name: true, email: true } },
