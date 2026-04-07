@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import PlatformIcon from '@/components/PlatformIcon'
 import Modal from '@/components/Modal'
+import ImagePicker from '@/components/ImagePicker'
 
 type SocialAccount = {
   id: string
@@ -687,16 +688,12 @@ export default function NewPostPage() {
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1.5">Image URL</label>
-                  <input
-                    type="url"
-                    value={mediaUrl}
-                    onChange={(e) => setMediaUrl(e.target.value)}
-                    className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all text-sm"
-                    placeholder="https://example.com/image.jpg"
-                  />
-                </div>
+                <ImagePicker
+                  label="Image"
+                  value={mediaUrl}
+                  onChange={setMediaUrl}
+                  aspectRatio="1:1"
+                />
               </>
             )}
 
@@ -792,16 +789,13 @@ export default function NewPostPage() {
                       </div>
                     </div>
 
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">Image URL</label>
-                      <input
-                        type="url"
-                        value={slides[currentSlide].mediaUrl}
-                        onChange={(e) => updateSlide(currentSlide, 'mediaUrl', e.target.value)}
-                        className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 text-sm"
-                        placeholder="https://example.com/slide-image.jpg"
-                      />
-                    </div>
+                    <ImagePicker
+                      label="Slide Image"
+                      value={slides[currentSlide].mediaUrl}
+                      onChange={(url) => updateSlide(currentSlide, 'mediaUrl', url)}
+                      aspectRatio="1:1"
+                      compact
+                    />
 
                     {/* Slide navigation arrows */}
                     <div className="flex items-center justify-between pt-1">
