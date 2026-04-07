@@ -32,10 +32,10 @@ export async function GET(
         ? process.env.INSTAGRAM_APP_ID
         : process.env.FACEBOOK_APP_ID
 
-      const scopes =
-        params.platform === 'instagram'
-          ? 'instagram_content_publish,instagram_manage_insights,pages_show_list'
-          : 'pages_manage_posts,pages_show_list'
+      // Both Instagram and Facebook use the same scopes via Business Login
+      // instagram_content_publish requires App Review - using pages_show_list + business_management
+      // which are approved for all Live apps without review
+      const scopes = 'pages_show_list,pages_manage_posts,business_management'
 
       authUrl = `https://www.facebook.com/v18.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scopes)}&state=${state}&response_type=code`
       break
