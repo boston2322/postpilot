@@ -170,7 +170,9 @@ export default function AIWizardPage() {
       setAnswers(prev => ({
         ...prev,
         ...Object.fromEntries(
-          Object.entries(data).filter(([k]) => k !== 'topic')
+          Object.entries(data)
+            .filter(([k]) => k !== 'topic')
+            .map(([k, v]) => [k, v as string | number | boolean])
         ),
       }))
     } catch {
