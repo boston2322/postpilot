@@ -10,6 +10,7 @@ function decodeState(state: string): { companyId: string } {
 }
 
 async function exchangeInstagramToken(code: string, redirectUri: string) {
+  // Step 1: Exchange code for Facebook User Access Token (Facebook Login for Business)
   const res = await fetch('https://graph.facebook.com/v18.0/oauth/access_token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -22,17 +23,58 @@ async function exchangeInstagramToken(code: string, redirectUri: string) {
   })
   const data = await res.json()
 
-  // Get Instagram user info
-  const userRes = await fetch(
-    `https://graph.instagram.com/me?fields=id,username&access_token=${data.access_token}`
+  if (!data.access_token) {
+    throw new Error(`Token exchange failed: ${JSON.stringify(data)}`)
+  }
+
+  // Step 2: Get user's Facebook Pages (needed to find connected Instagram Business account)
+  const pagesRes = await fetch(
+    `https://graph.facebook.com/v18.0/me/accounts?access_token=${data.access_token}`
   )
-  const user = await userRes.json()
+  const pagesData = await pagesRes.json()
+
+  // Step 3: Find Instagram Business account connected to a Page
+  let igAccountId = ''
+  let igAccountName = ''
+
+  if (pagesData.data?.length > 0) {
+    for (const page of pagesData.data) {
+      try {
+        const igRes = await fetch(
+          `https://graph.facebook.com/v18.0/${page.id}?fields=instagram_business_account&access_token=${page.access_token}`
+        )
+        const igData = await igRes.json()
+
+        if (igData.instagram_business_account?.id) {
+          const igInfoRes = await fetch(
+            `https://graph.facebook.com/v18.0/${igData.instagram_business_account.id}?fields=id,username&access_token=${page.access_token}`
+          )
+          const igInfo = await igInfoRes.json()
+          igAccountId = igInfo.id || igData.instagram_business_account.id
+          igAccountName = igInfo.username || 'Instagram Account'
+          break
+        }
+      } catch {
+        // continue to next page
+      }
+    }
+  }
+
+  // Step 4: Fall back to Facebook user info if no Instagram Business account found
+  if (!igAccountId) {
+    const userRes = await fetch(
+      `https://graph.facebook.com/v18.0/me?fields=id,name&access_token=${data.access_token}`
+    )
+    const user = await userRes.json()
+    igAccountId = user.id || `fb_${Date.now()}`
+    igAccountName = user.name || 'Instagram Account'
+  }
 
   return {
     accessToken: data.access_token,
     refreshToken: null,
-    accountId: user.id,
-    accountName: user.username,
+    accountId: igAccountId,
+    accountName: igAccountName,
     tokenExpiry: null,
   }
 }
@@ -50,18 +92,38 @@ async function exchangeFacebookToken(code: string, redirectUri: string) {
   })
   const data = await res.json()
 
-  // Get Page info
+  if (!data.access_token) {
+    throw new Error(`Token exchange failed: ${JSON.stringify(data)}`)
+  }
+
+  // Get Pages managed by this user
   const pagesRes = await fetch(
     `https://graph.facebook.com/v18.0/me/accounts?access_token=${data.access_token}`
   )
   const pages = await pagesRes.json()
   const page = pages.data?.[0]
 
+  if (page) {
+    return {
+      accessToken: page.access_token || data.access_token,
+      refreshToken: null,
+      accountId: page.id,
+      accountName: page.name,
+      tokenExpiry: null,
+    }
+  }
+
+  // Fall back to Facebook user info if no pages
+  const userRes = await fetch(
+    `https://graph.facebook.com/v18.0/me?fields=id,name&access_token=${data.access_token}`
+  )
+  const user = await userRes.json()
+
   return {
-    accessToken: page?.access_token || data.access_token,
+    accessToken: data.access_token,
     refreshToken: null,
-    accountId: page?.id || 'me',
-    accountName: page?.name || 'Facebook Page',
+    accountId: user.id || `fb_${Date.now()}`,
+    accountName: user.name || 'Facebook Account',
     tokenExpiry: null,
   }
 }
