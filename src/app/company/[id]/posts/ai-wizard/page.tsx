@@ -94,7 +94,7 @@ export default function AIWizardPage() {
   const [step, setStep] = useState<Step>(1)
   const [postType, setPostType] = useState<PostType | null>(null)
   const [accounts, setAccounts] = useState<SocialAccount[]>([])
-  const [selectedAccount, setSelectedAccount] = useState<SocialAccount | null>(null)
+  const [selectedAccounts, setSelectedAccounts] = useState<SocialAccount[]>([])
   const [answers, setAnswers] = useState<Record<string, string | number | boolean>>({
     tone: 'professional',
     goal: 'educate',
@@ -119,7 +119,7 @@ export default function AIWizardPage() {
       .then(data => {
         const accs = data.company?.socialAccounts?.filter((a: SocialAccount & { isActive: boolean }) => a.isActive) || []
         setAccounts(accs)
-        if (accs.length > 0) setSelectedAccount(accs[0])
+        if (accs.length > 0) setSelectedAccounts([accs[0]])
       })
       .catch(() => {})
   }, [companyId])
@@ -128,8 +128,16 @@ export default function AIWizardPage() {
     setAnswers(prev => ({ ...prev, [key]: value }))
   }
 
+  function toggleAccount(acc: SocialAccount) {
+    setSelectedAccounts(prev =>
+      prev.find(a => a.id === acc.id)
+        ? prev.filter(a => a.id !== acc.id)
+        : [...prev, acc]
+    )
+  }
+
   async function handleGenerate() {
-    if (!postType || !selectedAccount) return
+    if (!postType || selectedAccounts.length === 0) return
     if (!answers.topic || !(answers.topic as string).trim()) {
       setGenError('Please enter a topic for your post')
       return
@@ -138,13 +146,16 @@ export default function AIWizardPage() {
     setGenerating(true)
     setStep(3)
 
+    // Use first selected account's platform to style the content
+    const primaryPlatform = selectedAccounts[0].platform
+
     try {
       const res = await fetch('/api/ai/generate-post', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: postType,
-          platform: selectedAccount.platform,
+          platform: primaryPlatform,
           answers,
         }),
       })
@@ -165,7 +176,7 @@ export default function AIWizardPage() {
   }
 
   async function handleAccept() {
-    if (!generated || !selectedAccount) return
+    if (!generated || selectedAccounts.length === 0) return
     setAcceptError('')
     setAccepting(true)
 
@@ -176,42 +187,49 @@ export default function AIWizardPage() {
         title: s.title,
       }))
 
-      // Build post body
-      const postBody = {
-        content: generated.content,
-        platform: selectedAccount.platform,
-        hashtags: generated.hashtags,
-        mediaUrls: generated.mediaUrl ? [generated.mediaUrl] : [],
-        socialAccountId: selectedAccount.id,
-        isAiGenerated: true,
-        postType: generated.type,
-        slides: slides || null,
-        scheduledFor: scheduledFor || null,
-      }
+      // Create one post per selected account
+      const results = await Promise.allSettled(
+        selectedAccounts.map(async (account) => {
+          const postBody = {
+            content: generated.content,
+            platform: account.platform,
+            hashtags: generated.hashtags,
+            mediaUrls: generated.mediaUrl ? [generated.mediaUrl] : [],
+            socialAccountId: account.id,
+            isAiGenerated: true,
+            postType: generated.type,
+            slides: slides || null,
+            scheduledFor: scheduledFor || null,
+          }
 
-      // Create the post
-      const createRes = await fetch(`/api/companies/${companyId}/posts`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(postBody),
-      })
-      const createData = await createRes.json()
-      if (!createRes.ok) {
-        setAcceptError(createData.error || 'Failed to create post')
-        return
-      }
+          const createRes = await fetch(`/api/companies/${companyId}/posts`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(postBody),
+          })
+          const createData = await createRes.json()
+          if (!createRes.ok) throw new Error(createData.error || 'Failed to create post')
 
-      const postId = createData.post.id
+          const postId = createData.post.id
 
-      // Immediately approve it
-      const approveRes = await fetch(`/api/companies/${companyId}/posts/${postId}/approve`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'approve' }),
-      })
-      if (!approveRes.ok) {
-        const approveData = await approveRes.json()
-        setAcceptError(approveData.error || 'Post created but approval failed')
+          const approveRes = await fetch(`/api/companies/${companyId}/posts/${postId}/approve`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'approve' }),
+          })
+          if (!approveRes.ok) {
+            const approveData = await approveRes.json()
+            throw new Error(approveData.error || 'Approval failed')
+          }
+
+          return account.accountName
+        })
+      )
+
+      const failed = results.filter(r => r.status === 'rejected')
+      if (failed.length > 0) {
+        const msgs = failed.map(r => (r as PromiseRejectedResult).reason?.message).join(', ')
+        setAcceptError(`Some posts failed: ${msgs}`)
         return
       }
 
@@ -357,7 +375,10 @@ export default function AIWizardPage() {
               {/* Platform / Social Account selection */}
               {postType && (
                 <div>
-                  <label className={labelClass}>Post to which account?</label>
+                  <label className={labelClass}>
+                    Post to which accounts?
+                    <span className="ml-1.5 text-xs font-normal text-slate-400">Select one or more</span>
+                  </label>
                   {accounts.length === 0 ? (
                     <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm text-amber-700">
                       No connected accounts found.{' '}
@@ -367,22 +388,39 @@ export default function AIWizardPage() {
                     </div>
                   ) : (
                     <div className="grid grid-cols-2 gap-2">
-                      {accounts.map(acc => (
-                        <button
-                          key={acc.id}
-                          type="button"
-                          onClick={() => setSelectedAccount(acc)}
-                          className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm transition-all ${
-                            selectedAccount?.id === acc.id
-                              ? 'border-indigo-400 bg-indigo-50 text-indigo-700'
-                              : 'border-slate-200 hover:border-slate-300 text-slate-700'
-                          }`}
-                        >
-                          <span className="font-medium">{acc.platform}</span>
-                          <span className="text-xs opacity-70 truncate">{acc.accountName}</span>
-                        </button>
-                      ))}
+                      {accounts.map(acc => {
+                        const isSelected = selectedAccounts.some(a => a.id === acc.id)
+                        return (
+                          <button
+                            key={acc.id}
+                            type="button"
+                            onClick={() => toggleAccount(acc)}
+                            className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm transition-all ${
+                              isSelected
+                                ? 'border-indigo-400 bg-indigo-50 text-indigo-700'
+                                : 'border-slate-200 hover:border-slate-300 text-slate-700'
+                            }`}
+                          >
+                            <div className={`w-4 h-4 rounded flex-shrink-0 flex items-center justify-center border transition-all ${
+                              isSelected ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300'
+                            }`}>
+                              {isSelected && (
+                                <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                </svg>
+                              )}
+                            </div>
+                            <span className="font-medium">{acc.platform}</span>
+                            <span className="text-xs opacity-70 truncate">{acc.accountName}</span>
+                          </button>
+                        )
+                      })}
                     </div>
+                  )}
+                  {selectedAccounts.length > 1 && (
+                    <p className="text-xs text-indigo-600 mt-2 font-medium">
+                      ✦ Will create {selectedAccounts.length} posts — one per account
+                    </p>
                   )}
                 </div>
               )}
@@ -391,7 +429,7 @@ export default function AIWizardPage() {
             <button
               type="button"
               onClick={() => setStep(2)}
-              disabled={!postType || !selectedAccount}
+              disabled={!postType || selectedAccounts.length === 0}
               className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white font-medium py-3 rounded-xl transition-all"
             >
               Continue →
@@ -623,7 +661,7 @@ export default function AIWizardPage() {
               <p className="text-slate-500 mt-2 text-sm">
                 AI is crafting your{' '}
                 {postType === 'SINGLE' ? 'single image post' : postType === 'CAROUSEL' ? `${answers.slideCount}-slide carousel` : 'video post'}{' '}
-                for {selectedAccount?.platform}. This takes about 5–15 seconds.
+                for {selectedAccounts.map(a => a.platform).join(', ')}. This takes about 5–15 seconds.
               </p>
             </div>
             <div className="flex justify-center gap-2">
@@ -758,7 +796,7 @@ export default function AIWizardPage() {
                       : 'Will post immediately when you accept'}
                   </div>
                   <div className="opacity-70 text-xs mt-0.5">
-                    to {selectedAccount?.platform} · {selectedAccount?.accountName}
+                    to {selectedAccounts.map(a => `${a.platform} (${a.accountName})`).join(', ')}
                   </div>
                 </div>
               </div>
@@ -787,7 +825,10 @@ export default function AIWizardPage() {
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
                   </svg>
-                  <span>Accept & {scheduledFor ? 'Schedule Post' : 'Post Now'}</span>
+                  <span>
+                    Accept & {scheduledFor ? 'Schedule' : 'Post Now'}
+                    {selectedAccounts.length > 1 ? ` (${selectedAccounts.length} accounts)` : ''}
+                  </span>
                 </>
               )}
             </button>
