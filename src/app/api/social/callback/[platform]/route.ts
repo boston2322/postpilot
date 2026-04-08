@@ -301,8 +301,8 @@ export async function GET(
     return NextResponse.redirect(`${APP_URL}/dashboard?error=invalid_state`)
   }
 
-  // Instagram encodes platform='instagram' in state and redirects to /callback/facebook
-  // because config_id overrides redirect_uri. Resolve the real platform here.
+  // Instagram encodes platform='instagram' in state and redirects to /callback/facebook.
+  // Resolve the real platform from state (for Instagram) or from the URL param (for Facebook).
   const resolvedPlatform = statePlatform || params.platform
   const redirectUri = `${APP_URL}/api/social/callback/facebook` // always facebook for Meta
   const platform = resolvedPlatform.toUpperCase()
