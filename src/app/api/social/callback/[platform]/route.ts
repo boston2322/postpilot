@@ -36,6 +36,7 @@ async function exchangeInstagramToken(code: string, redirectUri: string) {
   // Step 3: Find Instagram Business account connected to a Page
   let igAccountId = ''
   let igAccountName = ''
+  let igPageAccessToken = data.access_token // default to user token; overridden below
 
   if (pagesData.data?.length > 0) {
     for (const page of pagesData.data) {
@@ -52,6 +53,9 @@ async function exchangeInstagramToken(code: string, redirectUri: string) {
           const igInfo = await igInfoRes.json()
           igAccountId = igInfo.id || igData.instagram_business_account.id
           igAccountName = igInfo.username || 'Instagram Account'
+          // IMPORTANT: Instagram Content Publishing API requires the Page access token,
+          // not the user-level token. Store the page token here.
+          igPageAccessToken = page.access_token
           break
         }
       } catch {
@@ -71,7 +75,7 @@ async function exchangeInstagramToken(code: string, redirectUri: string) {
   }
 
   return {
-    accessToken: data.access_token,
+    accessToken: igPageAccessToken,
     refreshToken: null,
     accountId: igAccountId,
     accountName: igAccountName,
