@@ -32,90 +32,91 @@ async function exchangeInstagramToken(code: string, redirectUri: string) {
 
   type IgFound = { accountId: string; accountName: string; pageToken: string }
   const igAccounts: IgFound[] = []
+  const diag: Record<string, unknown> = {}
 
-  // Step 2: Get all personal Facebook pages (each comes with a page access token)
+  // Step 2: Get pages + instagram_business_account in ONE request using nested fields.
+  // Page access tokens implicitly grant access to instagram_business_account even
+  // without user-level pages_read_engagement.
   const pagesRes = await fetch(
-    `https://graph.facebook.com/v18.0/me/accounts?fields=id,name,access_token&access_token=${data.access_token}`
+    `https://graph.facebook.com/v18.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,name}&access_token=${data.access_token}`
   )
   const pagesData = await pagesRes.json()
-  const allPages: Array<{ id: string; name: string; access_token: string }> = pagesData.data || []
-  console.log(`[IG OAuth] personal pages: ${allPages.length}`)
+  const allPages: Array<{ id: string; name: string; access_token: string; instagram_business_account?: { id: string; username?: string; name?: string } }> = pagesData.data || []
+  diag.pages = allPages.map(p => ({ id: p.id, name: p.name, hasIg: !!p.instagram_business_account }))
+  console.log(`[IG OAuth] pages (with nested IG):`, diag.pages)
 
-  // Step 3: Use business_management to get Instagram accounts owned by each business.
-  // This works without instagram_basic / pages_read_engagement (which the Business Login
-  // config_id does not grant and which are rejected as invalid scopes for this app).
-  const businesses: Array<{ id: string; name: string }> = []
-  try {
-    const bizRes = await fetch(
-      `https://graph.facebook.com/v18.0/me/businesses?fields=id,name&access_token=${data.access_token}`
-    )
-    const bizData = await bizRes.json()
-    businesses.push(...(bizData.data || []))
-    console.log(`[IG OAuth] businesses found: ${businesses.length}`)
-  } catch (e) {
-    console.error('[IG OAuth] error fetching businesses:', e)
+  // Extract any Instagram accounts found directly on pages
+  for (const page of allPages) {
+    if (page.instagram_business_account?.id) {
+      const ig = page.instagram_business_account
+      const name = ig.username || ig.name || 'Instagram Account'
+      if (!igAccounts.some(f => f.accountId === ig.id)) {
+        igAccounts.push({ accountId: ig.id, accountName: name, pageToken: page.access_token })
+        console.log(`[IG OAuth] found IG via nested field: ${name} (${ig.id}) on page ${page.id}`)
+      }
+    }
   }
 
-  // Collect Instagram account IDs from the business portfolio
-  const igFromBusiness: Array<{ id: string; username: string; name: string }> = []
-  for (const biz of businesses) {
-    // Also gather business-owned pages (for page token lookup later)
+  // Step 3: Try business portfolio (works when app is registered in Meta Business Suite)
+  if (igAccounts.length === 0) {
+    const businesses: Array<{ id: string; name: string }> = []
     try {
-      const bpRes = await fetch(
-        `https://graph.facebook.com/v18.0/${biz.id}/owned_pages?fields=id,name,access_token&access_token=${data.access_token}`
+      const bizRes = await fetch(
+        `https://graph.facebook.com/v18.0/me/businesses?fields=id,name&access_token=${data.access_token}`
       )
-      const bpData = await bpRes.json()
-      if (bpData.data?.length) {
-        for (const p of bpData.data) {
-          if (!allPages.some(existing => existing.id === p.id)) allPages.push(p)
-        }
-      }
-    } catch {}
+      const bizData = await bizRes.json()
+      businesses.push(...(bizData.data || []))
+      diag.businesses = businesses.map(b => b.name)
+      console.log(`[IG OAuth] businesses found: ${businesses.length}`)
+    } catch (e) {
+      console.error('[IG OAuth] error fetching businesses:', e)
+    }
 
-    // Primary: get Instagram accounts claimed by this business
-    for (const edge of ['owned_instagram_accounts', 'instagram_accounts']) {
+    for (const biz of businesses) {
+      // Gather business-owned pages for page token lookup
       try {
-        const igRes = await fetch(
-          `https://graph.facebook.com/v18.0/${biz.id}/${edge}?fields=id,username,name&access_token=${data.access_token}`
+        const bpRes = await fetch(
+          `https://graph.facebook.com/v18.0/${biz.id}/owned_pages?fields=id,name,access_token&access_token=${data.access_token}`
         )
-        const igData = await igRes.json()
-        if (igData.data?.length) {
-          console.log(`[IG OAuth] ${edge} for business ${biz.name}: ${igData.data.length}`)
-          for (const ig of igData.data) {
-            if (!igFromBusiness.some(x => x.id === ig.id)) igFromBusiness.push(ig)
+        const bpData = await bpRes.json()
+        if (bpData.data?.length) {
+          for (const p of bpData.data) {
+            if (!allPages.some(existing => existing.id === p.id)) allPages.push(p)
           }
         }
       } catch {}
+
+      // Try all Instagram account edges
+      for (const edge of ['owned_instagram_accounts', 'client_instagram_accounts', 'instagram_accounts']) {
+        try {
+          const igRes = await fetch(
+            `https://graph.facebook.com/v18.0/${biz.id}/${edge}?fields=id,username,name&access_token=${data.access_token}`
+          )
+          const igData = await igRes.json()
+          if (igData.data?.length) {
+            console.log(`[IG OAuth] ${edge} for ${biz.name}: ${igData.data.length}`)
+            for (const ig of igData.data) {
+              // Find page token that can access this IG account
+              let matchedToken = data.access_token
+              for (const page of allPages) {
+                try {
+                  const chk = await fetch(`https://graph.facebook.com/v18.0/${ig.id}?fields=id&access_token=${page.access_token}`)
+                  const chkData = await chk.json()
+                  if (chkData.id === ig.id) { matchedToken = page.access_token; break }
+                } catch {}
+              }
+              const name = ig.username || ig.name || 'Instagram Account'
+              if (!igAccounts.some(f => f.accountId === ig.id)) {
+                igAccounts.push({ accountId: ig.id, accountName: name, pageToken: matchedToken })
+              }
+            }
+          }
+        } catch {}
+      }
     }
   }
 
-  console.log(`[IG OAuth] Instagram accounts from business API: ${igFromBusiness.length}`, igFromBusiness.map(i => i.username))
-
-  // Step 4: For each Instagram account found via business API, find the page token
-  // that can access it (i.e. the page linked to that Instagram account).
-  for (const ig of igFromBusiness) {
-    let matchedToken = data.access_token // fallback: user token
-    for (const page of allPages) {
-      try {
-        const checkRes = await fetch(
-          `https://graph.facebook.com/v18.0/${ig.id}?fields=id&access_token=${page.access_token}`
-        )
-        const checkData = await checkRes.json()
-        if (checkData.id === ig.id) {
-          matchedToken = page.access_token
-          console.log(`[IG OAuth] matched IG ${ig.username} (${ig.id}) to page ${page.id}`)
-          break
-        }
-      } catch {}
-    }
-    const name = ig.username || ig.name || 'Instagram Account'
-    if (!igAccounts.some(f => f.accountId === ig.id)) {
-      igAccounts.push({ accountId: ig.id, accountName: name, pageToken: matchedToken })
-    }
-  }
-
-  // Step 5: Fallback — also check instagram_business_account on each page
-  // (works when the IG account is directly linked to the FB page, not via Business Suite)
+  // Step 4: Fallback — plain instagram_business_account query per page (for direct page links)
   if (igAccounts.length === 0) {
     for (const page of allPages) {
       try {
@@ -123,6 +124,7 @@ async function exchangeInstagramToken(code: string, redirectUri: string) {
           `https://graph.facebook.com/v18.0/${page.id}?fields=instagram_business_account&access_token=${page.access_token}`
         )
         const igData = await igRes.json()
+        diag[`page_${page.id}_iga`] = igData
         if (igData.instagram_business_account?.id) {
           const igInfoRes = await fetch(
             `https://graph.facebook.com/v18.0/${igData.instagram_business_account.id}?fields=id,username,name&access_token=${page.access_token}`
@@ -136,7 +138,7 @@ async function exchangeInstagramToken(code: string, redirectUri: string) {
           }
         }
       } catch (e) {
-        console.error(`[IG OAuth] fallback error checking page ${page.id}:`, e)
+        console.error(`[IG OAuth] fallback error for page ${page.id}:`, e)
       }
     }
   }
@@ -144,8 +146,10 @@ async function exchangeInstagramToken(code: string, redirectUri: string) {
   console.log(`[IG OAuth] total IG accounts found: ${igAccounts.length}`, igAccounts.map(a => a.accountName))
 
   if (igAccounts.length === 0) {
+    // Include diagnostic info in the error so it surfaces in the UI for debugging
+    const diagStr = JSON.stringify(diag, null, 2).slice(0, 500)
     throw new Error(
-      'No Instagram Business or Creator account found. Make sure your Instagram account is a Business or Creator account and is linked to a Facebook Page or Meta Business Suite. In Instagram: Settings → Account → Switch to Professional Account.'
+      `No Instagram Business or Creator account found. DEBUG: ${diagStr} — Make sure your Instagram is a Business/Creator account linked to the Post Pilot Facebook Page. In Instagram: Settings → Account → Switch to Professional Account, then link to your Facebook Page.`
     )
   }
 
