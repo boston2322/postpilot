@@ -3,8 +3,8 @@ import { getSession } from '@/lib/auth'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 
-function encodeState(companyId: string): string {
-  return Buffer.from(JSON.stringify({ companyId })).toString('base64url')
+function encodeState(companyId: string, platform?: string): string {
+  return Buffer.from(JSON.stringify({ companyId, ...(platform ? { platform } : {}) })).toString('base64url')
 }
 
 export async function GET(
@@ -21,47 +21,53 @@ export async function GET(
     return NextResponse.json({ error: 'companyId is required' }, { status: 400 })
   }
 
-  const state = encodeState(companyId)
-  const redirectUri = `${APP_URL}/api/social/callback/${params.platform}`
   let authUrl: string
 
   switch (params.platform.toLowerCase()) {
     case 'facebook': {
+      // Facebook uses config_id which controls approved permissions.
+      // config_id also overrides redirect_uri to its own whitelisted URL,
+      // so we always redirect to /callback/facebook for Meta platforms.
+      const state = encodeState(companyId)
+      const redirectUri = `${APP_URL}/api/social/callback/facebook`
       const appId = process.env.FACEBOOK_APP_ID
-      // Use config_id for Facebook — it controls the approved permissions
       const configId = process.env.META_CONFIG_ID || '2219336948472997'
       authUrl = `https://www.facebook.com/v18.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&config_id=${configId}&state=${state}&response_type=code`
       break
     }
 
     case 'instagram': {
-      // Instagram CANNOT use config_id — config_id overrides redirect_uri, sending both
-      // Facebook and Instagram callbacks to the same URL. Use explicit scopes instead
-      // so the redirect_uri we pass is actually honoured by Facebook's OAuth.
+      // config_id overrides redirect_uri — so Instagram must also redirect to /callback/facebook.
+      // We encode platform='instagram' in state so the callback knows to run
+      // exchangeInstagramToken instead of exchangeFacebookToken.
+      // This avoids needing App Review for instagram_basic / instagram_content_publish scopes.
+      const state = encodeState(companyId, 'instagram')
+      const redirectUri = `${APP_URL}/api/social/callback/facebook`
       const appId = process.env.INSTAGRAM_APP_ID || process.env.FACEBOOK_APP_ID
-      const scopes = [
-        'pages_show_list',
-        'instagram_basic',
-        'instagram_content_publish',
-        'pages_read_engagement',
-      ].join(',')
-      authUrl = `https://www.facebook.com/v18.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scopes)}&state=${state}&response_type=code`
+      const configId = process.env.META_CONFIG_ID || '2219336948472997'
+      authUrl = `https://www.facebook.com/v18.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&config_id=${configId}&state=${state}&response_type=code`
       break
     }
 
     case 'x': {
+      const state = encodeState(companyId)
+      const redirectUri = `${APP_URL}/api/social/callback/x`
       const scopes = 'tweet.read tweet.write users.read offline.access'
       authUrl = `https://twitter.com/i/oauth2/authorize?response_type=code&client_id=${process.env.X_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scopes)}&state=${state}&code_challenge=challenge&code_challenge_method=plain`
       break
     }
 
     case 'linkedin': {
+      const state = encodeState(companyId)
+      const redirectUri = `${APP_URL}/api/social/callback/linkedin`
       const scopes = 'r_liteprofile r_emailaddress w_member_social'
       authUrl = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${process.env.LINKEDIN_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scopes)}&state=${state}`
       break
     }
 
     case 'tiktok': {
+      const state = encodeState(companyId)
+      const redirectUri = `${APP_URL}/api/social/callback/tiktok`
       const scopes = 'user.info.basic,video.publish,video.upload'
       authUrl = `https://www.tiktok.com/v2/auth/authorize/?client_key=${process.env.TIKTOK_CLIENT_KEY}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scopes)}&state=${state}`
       break

@@ -5,7 +5,7 @@ import { encrypt } from '@/lib/encryption'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 
-function decodeState(state: string): { companyId: string } {
+function decodeState(state: string): { companyId: string; platform?: string } {
   return JSON.parse(Buffer.from(state, 'base64url').toString())
 }
 
@@ -264,15 +264,20 @@ export async function GET(
   }
 
   let companyId: string
+  let statePlatform: string | undefined
   try {
     const decoded = decodeState(state)
     companyId = decoded.companyId
+    statePlatform = decoded.platform // set when Instagram uses /callback/facebook
   } catch {
     return NextResponse.redirect(`${APP_URL}/dashboard?error=invalid_state`)
   }
 
-  const redirectUri = `${APP_URL}/api/social/callback/${params.platform}`
-  const platform = params.platform.toUpperCase()
+  // Instagram encodes platform='instagram' in state and redirects to /callback/facebook
+  // because config_id overrides redirect_uri. Resolve the real platform here.
+  const resolvedPlatform = statePlatform || params.platform
+  const redirectUri = `${APP_URL}/api/social/callback/facebook` // always facebook for Meta
+  const platform = resolvedPlatform.toUpperCase()
 
   try {
     let tokenData: {
@@ -283,7 +288,7 @@ export async function GET(
       tokenExpiry: Date | null
     }
 
-    switch (params.platform.toLowerCase()) {
+    switch (resolvedPlatform.toLowerCase()) {
       case 'instagram':
         tokenData = await exchangeInstagramToken(code, redirectUri)
         break
@@ -356,7 +361,7 @@ export async function GET(
     }
 
     return NextResponse.redirect(
-      `${APP_URL}/company/${companyId}/settings?connected=1&platform=${platform}`
+      `${APP_URL}/company/${companyId}/settings?connected=1&platform=${resolvedPlatform.toUpperCase()}`
     )
   } catch (err) {
     console.error('OAuth callback error:', err)
