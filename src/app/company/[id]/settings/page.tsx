@@ -84,12 +84,23 @@ export default function SettingsPage() {
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null)
   const [portalLoading, setPortalLoading] = useState(false)
 
+  // Instagram picker
+  const [showIgPicker, setShowIgPicker] = useState(false)
+  const [connectError, setConnectError] = useState('')
+  const [disconnectingId, setDisconnectingId] = useState<string | null>(null)
+
   useEffect(() => {
     const tab = searchParams.get('tab')
     if (tab) setActiveTab(tab)
 
     const connected = searchParams.get('connected')
     if (connected) setActiveTab('social')
+
+    const pickIg = searchParams.get('pick_instagram')
+    if (pickIg) { setActiveTab('social'); setShowIgPicker(true) }
+
+    const err = searchParams.get('error')
+    if (err) { setActiveTab('social'); setConnectError(decodeURIComponent(err)) }
 
     const isNew = searchParams.get('new')
     if (isNew) setActiveTab('subscription')
@@ -191,7 +202,9 @@ export default function SettingsPage() {
 
   async function handleDisconnect(accountId: string) {
     if (!confirm('Disconnect this account?')) return
+    setDisconnectingId(accountId)
     await fetch(`/api/social/accounts?id=${accountId}`, { method: 'DELETE' })
+    setDisconnectingId(null)
     await load()
   }
 
@@ -442,14 +455,50 @@ export default function SettingsPage() {
       {/* Social Accounts Tab */}
       {activeTab === 'social' && (
         <div className="space-y-4">
-          {searchParams.get('connected') && (
+          {searchParams.get('connected') && !showIgPicker && (
             <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-green-700 text-sm">
               ✅ {searchParams.get('platform') || 'Account'} connected successfully!
             </div>
           )}
-          {searchParams.get('error') && (
-            <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-red-700 text-sm">
-              Failed to connect account. Please try again.
+          {connectError && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm">
+              <p className="font-semibold text-red-700 mb-1">Failed to connect Instagram</p>
+              <p className="text-red-600">{connectError}</p>
+            </div>
+          )}
+
+          {/* Instagram account picker — shown when multiple IG accounts were found */}
+          {showIgPicker && accounts.filter(a => a.platform === 'INSTAGRAM').length > 1 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5">
+              <h3 className="font-semibold text-amber-800 mb-1">Multiple Instagram accounts found</h3>
+              <p className="text-amber-700 text-sm mb-4">
+                We found more than one Instagram account connected to your Facebook Pages. Disconnect the ones you don&apos;t want to use for PostPilot.
+              </p>
+              <div className="space-y-2">
+                {accounts.filter(a => a.platform === 'INSTAGRAM').map((account) => (
+                  <div key={account.id} className="flex items-center gap-3 bg-white rounded-xl border border-amber-200 px-4 py-3">
+                    <PlatformIcon platform="INSTAGRAM" className="w-5 h-5" />
+                    <div className="flex-1">
+                      <p className="font-medium text-slate-800 text-sm">@{account.accountName}</p>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        setDisconnectingId(account.id)
+                        await fetch(`/api/social/accounts?id=${account.id}`, { method: 'DELETE' })
+                        setDisconnectingId(null)
+                        await load()
+                        // Hide picker once only one remains
+                        const remaining = accounts.filter(a => a.platform === 'INSTAGRAM' && a.id !== account.id)
+                        if (remaining.length <= 1) setShowIgPicker(false)
+                      }}
+                      disabled={disconnectingId === account.id}
+                      className="text-xs bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1.5 rounded-lg font-medium transition-colors disabled:opacity-50"
+                    >
+                      {disconnectingId === account.id ? 'Removing…' : 'Remove'}
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
@@ -464,7 +513,9 @@ export default function SettingsPage() {
                   <div key={account.id} className="flex items-center gap-4 px-5 py-4">
                     <PlatformIcon platform={account.platform} className="w-6 h-6" />
                     <div className="flex-1">
-                      <p className="font-medium text-slate-800 text-sm">{account.accountName}</p>
+                      <p className="font-medium text-slate-800 text-sm">
+                        {account.platform === 'INSTAGRAM' ? `@${account.accountName}` : account.accountName}
+                      </p>
                       <p className="text-xs text-slate-400">{account.platform}</p>
                     </div>
                     <div className="flex items-center gap-3">
@@ -474,9 +525,10 @@ export default function SettingsPage() {
                       </span>
                       <button
                         onClick={() => handleDisconnect(account.id)}
-                        className="text-xs text-red-600 hover:text-red-700 hover:underline"
+                        disabled={disconnectingId === account.id}
+                        className="text-xs text-red-600 hover:text-red-700 hover:underline disabled:opacity-50"
                       >
-                        Disconnect
+                        {disconnectingId === account.id ? 'Disconnecting…' : 'Disconnect'}
                       </button>
                     </div>
                   </div>

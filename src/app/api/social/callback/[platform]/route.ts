@@ -31,69 +31,97 @@ async function exchangeInstagramToken(code: string, redirectUri: string) {
     throw new Error(`Token exchange failed: ${JSON.stringify(data)}`)
   }
 
-  // Step 2: Get user's Facebook Pages (needed to find connected Instagram Business account)
-  const pagesRes = await fetch(
-    `https://graph.facebook.com/v18.0/me/accounts?fields=id,name,access_token&access_token=${data.access_token}`
-  )
-  const pagesData = await pagesRes.json()
-  console.log('[IG OAuth] pages response:', JSON.stringify({ count: pagesData.data?.length, error: pagesData.error }))
-
-  // Step 3: Find Instagram Business account connected to a Page
-  let igAccountId = ''
-  let igAccountName = ''
-  let igPageAccessToken = data.access_token // default to user token; overridden below
-
-  if (pagesData.data?.length > 0) {
-    for (const page of pagesData.data) {
+  // Helper: given a list of pages, find all Instagram Business Accounts
+  type IgFound = { accountId: string; accountName: string; pageToken: string }
+  async function findIgAccounts(pages: Array<{ id: string; name: string; access_token: string }>): Promise<IgFound[]> {
+    const found: IgFound[] = []
+    for (const page of pages) {
       try {
-        console.log(`[IG OAuth] checking page ${page.id} (${page.name}) for IG business account`)
         const igRes = await fetch(
           `https://graph.facebook.com/v18.0/${page.id}?fields=instagram_business_account&access_token=${page.access_token}`
         )
         const igData = await igRes.json()
-        console.log(`[IG OAuth] page ${page.id} ig data:`, JSON.stringify(igData))
-
         if (igData.instagram_business_account?.id) {
           const igInfoRes = await fetch(
-            `https://graph.facebook.com/v18.0/${igData.instagram_business_account.id}?fields=id,username&access_token=${page.access_token}`
+            `https://graph.facebook.com/v18.0/${igData.instagram_business_account.id}?fields=id,username,name&access_token=${page.access_token}`
           )
           const igInfo = await igInfoRes.json()
-          console.log('[IG OAuth] found IG account:', JSON.stringify(igInfo))
-          igAccountId = igInfo.id || igData.instagram_business_account.id
-          igAccountName = igInfo.username || 'Instagram Account'
-          // IMPORTANT: Instagram Content Publishing API requires the Page access token,
-          // not the user-level token. Store the page token here.
-          igPageAccessToken = page.access_token
-          break
+          const id = igInfo.id || igData.instagram_business_account.id
+          const name = igInfo.username || igInfo.name || 'Instagram Account'
+          // Avoid duplicates
+          if (!found.some(f => f.accountId === id)) {
+            found.push({ accountId: id, accountName: name, pageToken: page.access_token })
+            console.log(`[IG OAuth] found IG account: ${name} (${id}) via page ${page.id}`)
+          }
         }
       } catch (e) {
-        console.error(`[IG OAuth] error checking page:`, e)
-        // continue to next page
+        console.error(`[IG OAuth] error checking page ${page.id}:`, e)
       }
     }
-  } else {
-    console.warn('[IG OAuth] no Facebook Pages found — will fall back to user token. Pages error:', JSON.stringify(pagesData.error))
+    return found
   }
 
-  // Step 4: Fall back to Facebook user info if no Instagram Business account found
-  if (!igAccountId) {
-    console.warn('[IG OAuth] falling back to user-level token — Instagram publishing will likely fail')
-    const userRes = await fetch(
-      `https://graph.facebook.com/v18.0/me?fields=id,name&access_token=${data.access_token}`
+  // Step 2a: Get personal Facebook Pages
+  const pagesRes = await fetch(
+    `https://graph.facebook.com/v18.0/me/accounts?fields=id,name,access_token&access_token=${data.access_token}`
+  )
+  const pagesData = await pagesRes.json()
+  const personalPages: Array<{ id: string; name: string; access_token: string }> = pagesData.data || []
+  console.log(`[IG OAuth] personal pages: ${personalPages.length}`)
+
+  // Step 2b: Also check Business Manager pages (covers Meta Business Suite accounts)
+  const bizPages: Array<{ id: string; name: string; access_token: string }> = []
+  try {
+    const bizRes = await fetch(
+      `https://graph.facebook.com/v18.0/me/businesses?fields=id,name&access_token=${data.access_token}`
     )
-    const user = await userRes.json()
-    igAccountId = user.id || `fb_${Date.now()}`
-    igAccountName = user.name || 'Instagram Account'
+    const bizData = await bizRes.json()
+    const businesses: Array<{ id: string; name: string }> = bizData.data || []
+    console.log(`[IG OAuth] businesses found: ${businesses.length}`)
+
+    for (const biz of businesses) {
+      // Get pages owned by this business
+      const bpRes = await fetch(
+        `https://graph.facebook.com/v18.0/${biz.id}/owned_pages?fields=id,name,access_token&access_token=${data.access_token}`
+      )
+      const bpData = await bpRes.json()
+      if (bpData.data?.length) {
+        console.log(`[IG OAuth] business ${biz.name} has ${bpData.data.length} pages`)
+        bizPages.push(...bpData.data)
+      }
+    }
+  } catch (e) {
+    console.error('[IG OAuth] error fetching business pages:', e)
   }
 
-  console.log(`[IG OAuth] final: accountId=${igAccountId} accountName=${igAccountName} usingPageToken=${igPageAccessToken !== data.access_token}`)
+  // Step 3: Find all Instagram accounts across personal + business pages
+  const allPages = [...personalPages, ...bizPages]
+  const igAccounts = await findIgAccounts(allPages)
+  console.log(`[IG OAuth] total IG accounts found: ${igAccounts.length}`, igAccounts.map(a => a.accountName))
+
+  // Step 4: If none found, fall back gracefully
+  if (igAccounts.length === 0) {
+    console.warn('[IG OAuth] no Instagram Business accounts found on any page')
+    throw new Error(
+      'No Instagram Business or Creator account found. Make sure your Instagram account is a Business or Creator account and is linked to a Facebook Page. In Instagram: Settings → Account → Switch to Professional Account.'
+    )
+  }
+
+  // Return the first account found — if multiple, all will be saved by the caller loop
+  const primary = igAccounts[0]
+  console.log(`[IG OAuth] using: ${primary.accountName} (${primary.accountId})`)
 
   return {
-    accessToken: igPageAccessToken,
+    accessToken: primary.pageToken,
     refreshToken: null,
-    accountId: igAccountId,
-    accountName: igAccountName,
+    accountId: primary.accountId,
+    accountName: primary.accountName,
     tokenExpiry: null,
+    allAccounts: igAccounts,
+  } as {
+    accessToken: string; refreshToken: null; accountId: string
+    accountName: string; tokenExpiry: null
+    allAccounts: IgFound[]
   }
 }
 
@@ -280,6 +308,46 @@ export async function GET(
   const platform = resolvedPlatform.toUpperCase()
 
   try {
+    // For Instagram, exchangeInstagramToken now returns allAccounts[]
+    // so we can save every found account and let the user pick in Settings.
+    if (resolvedPlatform.toLowerCase() === 'instagram') {
+      const igData = await exchangeInstagramToken(code, redirectUri)
+
+      // Delete all existing Instagram accounts for this company first
+      const existing = await prisma.socialAccount.findMany({
+        where: { companyId, platform: 'INSTAGRAM' },
+      })
+      // Save ALL found Instagram accounts
+      const savedIds: string[] = []
+      for (const ig of igData.allAccounts) {
+        const enc = encrypt(ig.pageToken)
+        const saved = await prisma.socialAccount.upsert({
+          where: { companyId_platform_accountId: { companyId, platform: 'INSTAGRAM', accountId: ig.accountId } },
+          update: { accessToken: enc, accountName: ig.accountName, isActive: true, refreshToken: null, tokenExpiry: null },
+          create: { companyId, platform: 'INSTAGRAM', accountId: ig.accountId, accountName: ig.accountName, accessToken: enc, refreshToken: null, tokenExpiry: null, isActive: true },
+        })
+        savedIds.push(saved.id)
+      }
+
+      // Clean up any old accounts that weren't in the new set
+      for (const old of existing) {
+        if (!savedIds.includes(old.id)) {
+          // Re-link posts to first saved account before deleting
+          if (savedIds[0]) {
+            await prisma.post.updateMany({ where: { socialAccountId: old.id }, data: { socialAccountId: savedIds[0] } })
+          }
+          await prisma.socialAccount.delete({ where: { id: old.id } })
+        }
+      }
+
+      // If multiple accounts found, redirect to settings with a flag to let user pick
+      const multiFlag = igData.allAccounts.length > 1 ? '&pick_instagram=1' : ''
+      return NextResponse.redirect(
+        `${APP_URL}/company/${companyId}/settings?connected=1&platform=INSTAGRAM${multiFlag}&tab=social`
+      )
+    }
+
+    // All other platforms
     let tokenData: {
       accessToken: string
       refreshToken: string | null
@@ -289,9 +357,6 @@ export async function GET(
     }
 
     switch (resolvedPlatform.toLowerCase()) {
-      case 'instagram':
-        tokenData = await exchangeInstagramToken(code, redirectUri)
-        break
       case 'facebook':
         tokenData = await exchangeFacebookToken(code, redirectUri)
         break
@@ -311,60 +376,30 @@ export async function GET(
     const encryptedAccess = encrypt(tokenData.accessToken)
     const encryptedRefresh = tokenData.refreshToken ? encrypt(tokenData.refreshToken) : null
 
-    // Find any existing accounts for this company+platform (regardless of accountId).
-    // When a user reconnects, the accountId can change (e.g. fallback FB user ID → real IG ID),
-    // which would silently create a duplicate record. Instead, we replace the old record
-    // and re-link any posts that were pointing to it.
     const existingAccounts = await prisma.socialAccount.findMany({
       where: { companyId, platform: platform as any },
     })
 
-    // Create / update the authoritative record
     const savedAccount = await prisma.socialAccount.upsert({
-      where: {
-        companyId_platform_accountId: {
-          companyId,
-          platform: platform as any,
-          accountId: tokenData.accountId,
-        },
-      },
-      update: {
-        accessToken: encryptedAccess,
-        refreshToken: encryptedRefresh,
-        tokenExpiry: tokenData.tokenExpiry,
-        accountName: tokenData.accountName,
-        isActive: true,
-      },
-      create: {
-        companyId,
-        platform: platform as any,
-        accountId: tokenData.accountId,
-        accountName: tokenData.accountName,
-        accessToken: encryptedAccess,
-        refreshToken: encryptedRefresh,
-        tokenExpiry: tokenData.tokenExpiry,
-        isActive: true,
-      },
+      where: { companyId_platform_accountId: { companyId, platform: platform as any, accountId: tokenData.accountId } },
+      update: { accessToken: encryptedAccess, refreshToken: encryptedRefresh, tokenExpiry: tokenData.tokenExpiry, accountName: tokenData.accountName, isActive: true },
+      create: { companyId, platform: platform as any, accountId: tokenData.accountId, accountName: tokenData.accountName, accessToken: encryptedAccess, refreshToken: encryptedRefresh, tokenExpiry: tokenData.tokenExpiry, isActive: true },
     })
 
-    // Re-link any posts that pointed to an old stale account for this platform
-    // and delete those stale accounts
     const staleAccounts = existingAccounts.filter((a) => a.id !== savedAccount.id)
     for (const stale of staleAccounts) {
-      // Move posts from the stale account to the new one
-      await prisma.post.updateMany({
-        where: { socialAccountId: stale.id },
-        data: { socialAccountId: savedAccount.id },
-      })
-      // Remove the stale account
+      await prisma.post.updateMany({ where: { socialAccountId: stale.id }, data: { socialAccountId: savedAccount.id } })
       await prisma.socialAccount.delete({ where: { id: stale.id } })
     }
 
     return NextResponse.redirect(
-      `${APP_URL}/company/${companyId}/settings?connected=1&platform=${resolvedPlatform.toUpperCase()}`
+      `${APP_URL}/company/${companyId}/settings?connected=1&platform=${resolvedPlatform.toUpperCase()}&tab=social`
     )
   } catch (err) {
+    const errMsg = err instanceof Error ? err.message : 'connection_failed'
     console.error('OAuth callback error:', err)
-    return NextResponse.redirect(`${APP_URL}/company/${companyId}/settings?error=connection_failed`)
+    // Pass the error message so settings page can show it
+    const encodedErr = encodeURIComponent(errMsg.slice(0, 200))
+    return NextResponse.redirect(`${APP_URL}/company/${companyId}/settings?error=${encodedErr}&tab=social`)
   }
 }
