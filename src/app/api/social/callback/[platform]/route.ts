@@ -181,6 +181,7 @@ async function exchangeInstagramDirectToken(code: string, redirectUri: string) {
   const appSecret = process.env.INSTAGRAM_APP_SECRET || process.env.FACEBOOK_APP_SECRET!
 
   // Step 1: Exchange code for short-lived token
+  // Response includes user_id directly — use it to avoid /me endpoint issues
   const res = await fetch('https://api.instagram.com/oauth/access_token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -196,6 +197,7 @@ async function exchangeInstagramDirectToken(code: string, redirectUri: string) {
   if (!data.access_token) {
     throw new Error(`Instagram token exchange failed: ${JSON.stringify(data)}`)
   }
+  const userId = data.user_id?.toString()
 
   // Step 2: Exchange for long-lived token (60 days)
   const llRes = await fetch(
@@ -205,23 +207,27 @@ async function exchangeInstagramDirectToken(code: string, redirectUri: string) {
   const accessToken = llData.access_token || data.access_token
   const expiresIn = llData.expires_in
 
-  // Step 3: Get user profile (no version prefix — required for instagram.com direct OAuth tokens)
-  const meRes = await fetch(
-    `https://graph.instagram.com/me?fields=id,username,name&access_token=${accessToken}`
-  )
+  // Step 3: Get user profile using explicit user ID (not /me — unsupported for Business Login tokens)
+  const profileUrl = userId
+    ? `https://graph.instagram.com/v21.0/${userId}?fields=id,username,name&access_token=${accessToken}`
+    : `https://graph.instagram.com/v21.0/me?fields=id,username,name&access_token=${accessToken}`
+  const meRes = await fetch(profileUrl)
   const me = await meRes.json()
 
-  if (!me.id) {
+  // If profile fetch fails but we have user_id from step 1, use that directly
+  const accountId = me.id || userId
+  if (!accountId) {
     throw new Error(`Could not get Instagram profile: ${JSON.stringify(me)}`)
   }
+  const accountName = me.username || me.name || 'Instagram Account'
 
   return {
     accessToken,
     refreshToken: null,
-    accountId: me.id,
-    accountName: me.username || me.name || 'Instagram Account',
+    accountId,
+    accountName,
     tokenExpiry: expiresIn ? new Date(Date.now() + expiresIn * 1000) : null,
-    allAccounts: [{ accountId: me.id, accountName: me.username || me.name || 'Instagram Account', pageToken: accessToken }],
+    allAccounts: [{ accountId, accountName, pageToken: accessToken }],
   }
 }
 
