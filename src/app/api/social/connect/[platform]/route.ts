@@ -42,7 +42,7 @@ export async function GET(
       const scopes = [
         'pages_show_list',
         'instagram_basic',
-        'instagram_content_publishing',
+        'instagram_content_publish',
         'pages_read_engagement',
       ].join(',')
       authUrl = `https://www.facebook.com/v18.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scopes)}&state=${state}&response_type=code`
