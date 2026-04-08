@@ -174,6 +174,57 @@ async function exchangeInstagramToken(code: string, redirectUri: string) {
   }
 }
 
+// New Instagram Business OAuth (instagram.com) — uses instagram_business_* scopes.
+// This works with Facebook Login for Business apps without needing pages_read_engagement.
+async function exchangeInstagramDirectToken(code: string, redirectUri: string) {
+  const appId = process.env.INSTAGRAM_APP_ID || process.env.FACEBOOK_APP_ID!
+  const appSecret = process.env.INSTAGRAM_APP_SECRET || process.env.FACEBOOK_APP_SECRET!
+
+  // Step 1: Exchange code for short-lived token
+  const res = await fetch('https://api.instagram.com/oauth/access_token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: appId,
+      client_secret: appSecret,
+      grant_type: 'authorization_code',
+      redirect_uri: redirectUri,
+      code,
+    }),
+  })
+  const data = await res.json()
+  if (!data.access_token) {
+    throw new Error(`Instagram token exchange failed: ${JSON.stringify(data)}`)
+  }
+
+  // Step 2: Exchange for long-lived token (60 days)
+  const llRes = await fetch(
+    `https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${appSecret}&access_token=${data.access_token}`
+  )
+  const llData = await llRes.json()
+  const accessToken = llData.access_token || data.access_token
+  const expiresIn = llData.expires_in
+
+  // Step 3: Get user profile
+  const meRes = await fetch(
+    `https://graph.instagram.com/v18.0/me?fields=id,username,name&access_token=${accessToken}`
+  )
+  const me = await meRes.json()
+
+  if (!me.id) {
+    throw new Error(`Could not get Instagram profile: ${JSON.stringify(me)}`)
+  }
+
+  return {
+    accessToken,
+    refreshToken: null,
+    accountId: me.id,
+    accountName: me.username || me.name || 'Instagram Account',
+    tokenExpiry: expiresIn ? new Date(Date.now() + expiresIn * 1000) : null,
+    allAccounts: [{ accountId: me.id, accountName: me.username || me.name || 'Instagram Account', pageToken: accessToken }],
+  }
+}
+
 async function exchangeFacebookToken(code: string, redirectUri: string) {
   const res = await fetch('https://graph.facebook.com/v18.0/oauth/access_token', {
     method: 'POST',
@@ -350,17 +401,21 @@ export async function GET(
     return NextResponse.redirect(`${APP_URL}/dashboard?error=invalid_state`)
   }
 
-  // Instagram encodes platform='instagram' in state and redirects to /callback/facebook.
-  // Resolve the real platform from state (for Instagram) or from the URL param (for Facebook).
+  // Resolve the real platform from state (for Instagram via Facebook) or from the URL param.
   const resolvedPlatform = statePlatform || params.platform
-  const redirectUri = `${APP_URL}/api/social/callback/facebook` // always facebook for Meta
+  // For Meta callbacks the redirect URI must match what was used in the auth URL.
+  const redirectUri = params.platform === 'instagram'
+    ? `${APP_URL}/api/social/callback/instagram`   // new direct Instagram OAuth
+    : `${APP_URL}/api/social/callback/facebook`     // Facebook / old Instagram via Business Login
   const platform = resolvedPlatform.toUpperCase()
 
   try {
-    // For Instagram, exchangeInstagramToken now returns allAccounts[]
-    // so we can save every found account and let the user pick in Settings.
     if (resolvedPlatform.toLowerCase() === 'instagram') {
-      const igData = await exchangeInstagramToken(code, redirectUri)
+      // New direct Instagram OAuth (callback comes in on /callback/instagram).
+      // Falls back to the old Business Login path if callback is via /callback/facebook.
+      const igData = params.platform === 'instagram'
+        ? await exchangeInstagramDirectToken(code, redirectUri)
+        : await exchangeInstagramToken(code, redirectUri)
 
       // Delete all existing Instagram accounts for this company first
       const existing = await prisma.socialAccount.findMany({

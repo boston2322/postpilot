@@ -37,15 +37,16 @@ export async function GET(
     }
 
     case 'instagram': {
-      // Use config_id (same as Facebook) so the token includes business_management +
-      // pages_show_list. We find the Instagram account via owned_instagram_accounts
-      // on the business, which avoids needing instagram_basic / pages_read_engagement.
-      // platform='instagram' in state tells the callback to run exchangeInstagramToken.
+      // Use the new Instagram Business OAuth (instagram.com/oauth/authorize).
+      // This uses instagram_business_* scopes which ARE valid for Facebook Login for
+      // Business apps — unlike the old instagram_basic / instagram_content_publish
+      // scopes which are only valid for regular Facebook Login.
+      // No config_id needed; scopes are passed directly.
       const state = encodeState(companyId, 'instagram')
-      const redirectUri = `${APP_URL}/api/social/callback/facebook`
+      const redirectUri = `${APP_URL}/api/social/callback/instagram`
       const appId = process.env.INSTAGRAM_APP_ID || process.env.FACEBOOK_APP_ID
-      const configId = process.env.META_CONFIG_ID || '2219336948472997'
-      authUrl = `https://www.facebook.com/v18.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&config_id=${configId}&state=${state}&response_type=code`
+      const scopes = 'instagram_business_basic,instagram_business_content_publish'
+      authUrl = `https://www.instagram.com/oauth/authorize?enable_fb_login=0&force_authentication=1&client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scopes)}&state=${state}`
       break
     }
 
