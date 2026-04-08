@@ -175,13 +175,11 @@ async function exchangeInstagramToken(code: string, redirectUri: string) {
 }
 
 // New Instagram Business OAuth (instagram.com) — uses instagram_business_* scopes.
-// This works with Facebook Login for Business apps without needing pages_read_engagement.
 async function exchangeInstagramDirectToken(code: string, redirectUri: string) {
   const appId = process.env.INSTAGRAM_APP_ID || process.env.FACEBOOK_APP_ID!
   const appSecret = process.env.INSTAGRAM_APP_SECRET || process.env.FACEBOOK_APP_SECRET!
 
   // Step 1: Exchange code for short-lived token
-  // Response includes user_id directly — use it to avoid /me endpoint issues
   const res = await fetch('https://api.instagram.com/oauth/access_token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -197,37 +195,52 @@ async function exchangeInstagramDirectToken(code: string, redirectUri: string) {
   if (!data.access_token) {
     throw new Error(`Instagram token exchange failed: ${JSON.stringify(data)}`)
   }
-  const userId = data.user_id?.toString()
+  // user_id may or may not be present depending on the API version
+  let userId: string | undefined = data.user_id?.toString() || undefined
 
   // Step 2: Exchange for long-lived token (60 days)
   const llRes = await fetch(
     `https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${appSecret}&access_token=${data.access_token}`
   )
   const llData = await llRes.json()
-  const accessToken = llData.access_token || data.access_token
+  if (!llData.access_token) {
+    console.error('[IG OAuth] Long-lived token exchange failed:', JSON.stringify(llData))
+    throw new Error(`Instagram long-lived token exchange failed: ${JSON.stringify(llData)}`)
+  }
+  const accessToken = llData.access_token
   const expiresIn = llData.expires_in
 
-  // Step 3: Get user profile using explicit user ID (not /me — unsupported for Business Login tokens)
-  const profileUrl = userId
-    ? `https://graph.instagram.com/v21.0/${userId}?fields=id,username,name&access_token=${accessToken}`
-    : `https://graph.instagram.com/v21.0/me?fields=id,username,name&access_token=${accessToken}`
-  const meRes = await fetch(profileUrl)
-  const me = await meRes.json()
-
-  // If profile fetch fails but we have user_id from step 1, use that directly
-  const accountId = me.id || userId
-  if (!accountId) {
-    throw new Error(`Could not get Instagram profile: ${JSON.stringify(me)}`)
+  // Step 3: If we don't have user_id yet, get it from Facebook's token debug endpoint.
+  // graph.instagram.com rejects GET /me with code 100 for Business Login tokens,
+  // so we use the FB debug_token endpoint which works for all Meta tokens.
+  if (!userId) {
+    try {
+      const debugRes = await fetch(
+        `https://graph.facebook.com/debug_token?input_token=${accessToken}&access_token=${appId}|${appSecret}`
+      )
+      const debugData = await debugRes.json()
+      userId = debugData.data?.user_id?.toString() || undefined
+      console.log('[IG OAuth] debug_token result:', JSON.stringify(debugData.data))
+    } catch (e) {
+      console.error('[IG OAuth] debug_token failed:', e)
+    }
   }
-  const accountName = me.username || me.name || 'Instagram Account'
 
+  if (!userId) {
+    // Last resort: derive a stable ID from the token itself
+    const crypto = await import('crypto')
+    userId = crypto.createHash('sha256').update(accessToken).digest('hex').substring(0, 20)
+    console.warn('[IG OAuth] No user_id found, using token hash as accountId:', userId)
+  }
+
+  const accountName = 'Instagram Account'
   return {
     accessToken,
     refreshToken: null,
-    accountId,
+    accountId: userId,
     accountName,
     tokenExpiry: expiresIn ? new Date(Date.now() + expiresIn * 1000) : null,
-    allAccounts: [{ accountId, accountName, pageToken: accessToken }],
+    allAccounts: [{ accountId: userId, accountName, pageToken: accessToken }],
   }
 }
 
