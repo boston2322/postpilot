@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSession } from '@/lib/auth'
 import { schedulePost } from '@/lib/queue'
+import { publishPost } from '@/lib/publish'
 
 export async function POST(
   request: NextRequest,
@@ -18,12 +19,14 @@ export async function POST(
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  // Check if user can approve
   const canApprove =
     member.canApprove || member.role === 'OWNER' || member.role === 'MANAGER'
 
   if (!canApprove) {
-    return NextResponse.json({ error: 'You do not have permission to approve posts' }, { status: 403 })
+    return NextResponse.json(
+      { error: 'You do not have permission to approve posts' },
+      { status: 403 }
+    )
   }
 
   const post = await prisma.post.findFirst({
@@ -46,36 +49,64 @@ export async function POST(
     if (action === 'reject') {
       const updated = await prisma.post.update({
         where: { id: params.postId },
-        data: {
-          status: 'REJECTED',
-          approverId: session.id,
-        },
+        data: { status: 'REJECTED', approverId: session.id },
       })
       return NextResponse.json({ post: updated })
     }
 
-    // Approve
-    // If has scheduledFor + socialAccount → SCHEDULED
-    // If no scheduledFor but has socialAccount → post immediately (SCHEDULED with delay 0)
-    // Otherwise → APPROVED
-    const hasSchedule = post.scheduledFor && post.socialAccountId
-    const postNow = !post.scheduledFor && post.socialAccountId
-    const newStatus: 'APPROVED' | 'SCHEDULED' = (hasSchedule || postNow) ? 'SCHEDULED' : 'APPROVED'
+    // ── APPROVE ──────────────────────────────────────────────────────────────
+    const hasSchedule = !!post.scheduledFor && !!post.socialAccountId
+    const postNow = !post.scheduledFor && !!post.socialAccountId
 
-    const updated = await prisma.post.update({
-      where: { id: params.postId },
-      data: {
-        status: newStatus,
-        approverId: session.id,
-      },
-    })
+    if (postNow) {
+      // No scheduled date + has an account → publish immediately, bypass queue
+      await prisma.post.update({
+        where: { id: params.postId },
+        data: { status: 'SCHEDULED', approverId: session.id },
+      })
 
-    // Add to queue if scheduled
-    if (newStatus === 'SCHEDULED') {
-      const publishTime = post.scheduledFor || new Date() // now if no scheduledFor
-      await schedulePost(params.postId, publishTime)
+      try {
+        const result = await publishPost(params.postId)
+        const updated = await prisma.post.update({
+          where: { id: params.postId },
+          data: {
+            status: 'PUBLISHED',
+            publishedAt: new Date(),
+            externalId: result.externalId || null,
+            failureReason: null,
+          },
+        })
+        return NextResponse.json({ post: updated })
+      } catch (publishError) {
+        const errMessage =
+          publishError instanceof Error ? publishError.message : 'Unknown publish error'
+        const updated = await prisma.post.update({
+          where: { id: params.postId },
+          data: {
+            status: 'FAILED',
+            failureReason: errMessage,
+            retryCount: { increment: 1 },
+          },
+        })
+        return NextResponse.json({ post: updated, warning: errMessage })
+      }
     }
 
+    if (hasSchedule) {
+      // Has a future date → SCHEDULED, add to queue
+      const updated = await prisma.post.update({
+        where: { id: params.postId },
+        data: { status: 'SCHEDULED', approverId: session.id },
+      })
+      await schedulePost(params.postId, new Date(post.scheduledFor!))
+      return NextResponse.json({ post: updated })
+    }
+
+    // No account linked → just APPROVED
+    const updated = await prisma.post.update({
+      where: { id: params.postId },
+      data: { status: 'APPROVED', approverId: session.id },
+    })
     return NextResponse.json({ post: updated })
   } catch (error) {
     console.error('Approve post error:', error)
