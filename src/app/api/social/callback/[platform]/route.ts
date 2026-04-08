@@ -228,19 +228,20 @@ async function exchangeInstagramDirectToken(code: string, redirectUri: string) {
 
   if (!userId) {
     // Last resort: derive a stable ID from the token itself
-    const crypto = await import('crypto')
-    userId = crypto.createHash('sha256').update(accessToken).digest('hex').substring(0, 20)
+    const { createHash } = await import('crypto')
+    userId = createHash('sha256').update(accessToken).digest('hex').substring(0, 20)
     console.warn('[IG OAuth] No user_id found, using token hash as accountId:', userId)
   }
 
+  const finalUserId = userId as string
   const accountName = 'Instagram Account'
   return {
     accessToken,
     refreshToken: null,
-    accountId: userId,
+    accountId: finalUserId,
     accountName,
     tokenExpiry: expiresIn ? new Date(Date.now() + expiresIn * 1000) : null,
-    allAccounts: [{ accountId: userId, accountName, pageToken: accessToken }],
+    allAccounts: [{ accountId: finalUserId, accountName, pageToken: accessToken }],
   }
 }
 
