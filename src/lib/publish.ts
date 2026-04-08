@@ -64,7 +64,15 @@ export async function publishPost(postId: string) {
   // ── INSTAGRAM ───────────────────────────────────────────────────────────────
   if (account.platform === 'INSTAGRAM') {
     const igAccountId = accountId
+    // Direct Instagram OAuth tokens (instagram_business_content_publish) use graph.instagram.com.
+    // Facebook Business Login tokens use graph.facebook.com. We use graph.instagram.com as it
+    // works for both Business Login tokens (via ig_user_id) and direct Instagram OAuth tokens.
+    const igBase = `https://graph.instagram.com/v21.0/${igAccountId}`
     const postTypeValue = (post as Record<string, unknown>).postType as string | undefined
+
+    function throwIgError(prefix: string, err: { message?: string } | undefined, status: number): never {
+      throw new Error(`${prefix}: ${err?.message || status}`)
+    }
 
     if (postTypeValue === 'CAROUSEL') {
       const rawSlides = (post as Record<string, unknown>).slides
@@ -75,35 +83,26 @@ export async function publishPost(postId: string) {
       for (const slide of slides) {
         if (!slide.mediaUrl) throw new Error(`Slide ${slide.id} is missing an image URL`)
 
-        const containerRes = await fetch(
-          `https://graph.facebook.com/v18.0/${igAccountId}/media`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              image_url: slide.mediaUrl,
-              is_carousel_item: true,
-              access_token: accessToken,
-            }),
-          }
-        )
+        const containerRes = await fetch(`${igBase}/media`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            image_url: slide.mediaUrl,
+            is_carousel_item: true,
+            access_token: accessToken,
+          }),
+        })
 
         if (!containerRes.ok) {
           const errData = await containerRes.json().catch(() => ({}))
-          const fbErr = (errData as Record<string, { message?: string }>).error
-          if (containerRes.status === 400 && fbErr?.message?.includes('instagram_content_publish')) {
-            throw new Error(
-              'Your Instagram account needs App Review permissions to post. Facebook page posting works immediately.'
-            )
-          }
-          throw new Error(`Failed to create carousel item: ${fbErr?.message || containerRes.status}`)
+          throwIgError('Failed to create carousel item', (errData as Record<string, { message?: string }>).error, containerRes.status)
         }
 
         const containerData = await containerRes.json()
         containerIds.push(containerData.id)
       }
 
-      const carouselRes = await fetch(`https://graph.facebook.com/v18.0/${igAccountId}/media`, {
+      const carouselRes = await fetch(`${igBase}/media`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -116,34 +115,19 @@ export async function publishPost(postId: string) {
 
       if (!carouselRes.ok) {
         const errData = await carouselRes.json().catch(() => ({}))
-        const fbErr = (errData as Record<string, { message?: string }>).error
-        if (carouselRes.status === 400 && fbErr?.message?.includes('instagram_content_publish')) {
-          throw new Error(
-            'Your Instagram account needs App Review permissions to post. Facebook page posting works immediately.'
-          )
-        }
-        throw new Error(`Failed to create carousel container: ${fbErr?.message || carouselRes.status}`)
+        throwIgError('Failed to create carousel container', (errData as Record<string, { message?: string }>).error, carouselRes.status)
       }
 
       const carouselData = await carouselRes.json()
-      const publishRes = await fetch(
-        `https://graph.facebook.com/v18.0/${igAccountId}/media_publish`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ creation_id: carouselData.id, access_token: accessToken }),
-        }
-      )
+      const publishRes = await fetch(`${igBase}/media_publish`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ creation_id: carouselData.id, access_token: accessToken }),
+      })
 
       if (!publishRes.ok) {
         const errData = await publishRes.json().catch(() => ({}))
-        const fbErr = (errData as Record<string, { message?: string }>).error
-        if (publishRes.status === 400 && fbErr?.message?.includes('instagram_content_publish')) {
-          throw new Error(
-            'Your Instagram account needs App Review permissions to post. Facebook page posting works immediately.'
-          )
-        }
-        throw new Error(`Failed to publish carousel: ${fbErr?.message || publishRes.status}`)
+        throwIgError('Failed to publish carousel', (errData as Record<string, { message?: string }>).error, publishRes.status)
       }
 
       const publishData = await publishRes.json()
@@ -155,7 +139,7 @@ export async function publishPost(postId: string) {
       throw new Error('Instagram requires an image URL')
     }
 
-    const mediaRes = await fetch(`https://graph.facebook.com/v18.0/${igAccountId}/media`, {
+    const mediaRes = await fetch(`${igBase}/media`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -169,32 +153,19 @@ export async function publishPost(postId: string) {
       const errData = await mediaRes.json().catch(() => ({}))
       const fbErr = (errData as Record<string, { message?: string; code?: number; error_subcode?: number; type?: string }>).error
       console.error(`[publish] IG media container failed:`, JSON.stringify(errData))
-      if (mediaRes.status === 400 && fbErr?.message?.includes('instagram_content_publish')) {
-        throw new Error(
-          'Your Instagram account needs App Review permissions to post. Facebook page posting works immediately.'
-        )
-      }
       throw new Error(`Failed to create Instagram media container: ${JSON.stringify(fbErr) || mediaRes.status}`)
     }
 
     const mediaData = await mediaRes.json()
-    const publishRes = await fetch(
-      `https://graph.facebook.com/v18.0/${igAccountId}/media_publish`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ creation_id: mediaData.id, access_token: accessToken }),
-      }
-    )
+    const publishRes = await fetch(`${igBase}/media_publish`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ creation_id: mediaData.id, access_token: accessToken }),
+    })
 
     if (!publishRes.ok) {
       const errData = await publishRes.json().catch(() => ({}))
       const fbErr = (errData as Record<string, { message?: string }>).error
-      if (publishRes.status === 400 && fbErr?.message?.includes('instagram_content_publish')) {
-        throw new Error(
-          'Your Instagram account needs App Review permissions to post. Facebook page posting works immediately.'
-        )
-      }
       throw new Error(`Failed to publish Instagram post: ${fbErr?.message || publishRes.status}`)
     }
 
