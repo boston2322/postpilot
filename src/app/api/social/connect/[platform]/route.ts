@@ -37,16 +37,23 @@ export async function GET(
     }
 
     case 'instagram': {
-      // Use the new Instagram Business OAuth (instagram.com/oauth/authorize).
-      // This uses instagram_business_* scopes which ARE valid for Facebook Login for
-      // Business apps — unlike the old instagram_basic / instagram_content_publish
-      // scopes which are only valid for regular Facebook Login.
-      // No config_id needed; scopes are passed directly.
+      // Two-path Instagram OAuth:
+      // 1) If INSTAGRAM_OAUTH_DIRECT=true: use instagram.com/oauth/authorize with
+      //    instagram_business_basic + instagram_business_content_publish scopes.
+      //    Requires the "Instagram Graph API" product to be added to the FB app.
+      // 2) Otherwise: use Facebook Login for Business (config_id) which grants
+      //    business_management + pages_show_list to find IG via the Business API.
       const state = encodeState(companyId, 'instagram')
-      const redirectUri = `${APP_URL}/api/social/callback/instagram`
       const appId = process.env.INSTAGRAM_APP_ID || process.env.FACEBOOK_APP_ID
-      const scopes = 'instagram_business_basic,instagram_business_content_publish'
-      authUrl = `https://www.instagram.com/oauth/authorize?enable_fb_login=0&force_authentication=1&client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scopes)}&state=${state}`
+      if (process.env.INSTAGRAM_OAUTH_DIRECT === 'true') {
+        const redirectUri = `${APP_URL}/api/social/callback/instagram`
+        const scopes = 'instagram_business_basic,instagram_business_content_publish'
+        authUrl = `https://www.instagram.com/oauth/authorize?enable_fb_login=0&force_authentication=1&client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scopes)}&state=${state}`
+      } else {
+        const redirectUri = `${APP_URL}/api/social/callback/facebook`
+        const configId = process.env.META_CONFIG_ID || '2219336948472997'
+        authUrl = `https://www.facebook.com/v18.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&config_id=${configId}&state=${state}&response_type=code`
+      }
       break
     }
 
