@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSession } from '@/lib/auth'
 import { decrypt } from '@/lib/encryption'
+import { friendlyError } from '@/lib/publishErrors'
 
 type Slide = {
   id: string
@@ -286,18 +287,19 @@ export async function POST(
 
     return NextResponse.json({ success: true, externalId: result.externalId })
   } catch (publishError) {
-    const errMessage =
-      publishError instanceof Error ? publishError.message : 'Unknown publish error'
+    const raw = publishError instanceof Error ? publishError.message : 'Unknown publish error'
+    const friendly = friendlyError(raw)
+    const failureReason = JSON.stringify(friendly)
 
     await prisma.post.update({
       where: { id: postId },
       data: {
         status: 'FAILED',
-        failureReason: errMessage,
+        failureReason,
         retryCount: { increment: 1 },
       },
     })
 
-    return NextResponse.json({ error: errMessage }, { status: 422 })
+    return NextResponse.json({ error: friendly.message, code: friendly.code }, { status: 422 })
   }
 }

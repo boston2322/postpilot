@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { getSession } from '@/lib/auth'
 import { schedulePost } from '@/lib/queue'
 import { publishPost } from '@/lib/publish'
+import { friendlyError } from '@/lib/publishErrors'
 
 export async function POST(
   request: NextRequest,
@@ -78,17 +79,19 @@ export async function POST(
         })
         return NextResponse.json({ post: updated })
       } catch (publishError) {
-        const errMessage =
-          publishError instanceof Error ? publishError.message : 'Unknown publish error'
+        const raw = publishError instanceof Error ? publishError.message : 'Unknown publish error'
+        const friendly = friendlyError(raw)
+        // Store as JSON so the UI can show code + hint separately
+        const failureReason = JSON.stringify(friendly)
         const updated = await prisma.post.update({
           where: { id: params.postId },
           data: {
             status: 'FAILED',
-            failureReason: errMessage,
+            failureReason,
             retryCount: { increment: 1 },
           },
         })
-        return NextResponse.json({ post: updated, warning: errMessage })
+        return NextResponse.json({ post: updated, warning: friendly.message })
       }
     }
 
