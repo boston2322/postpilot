@@ -18,6 +18,8 @@ export async function publishPost(postId: string) {
   if (!post.socialAccount) throw new Error('No social account linked to this post')
 
   const account = post.socialAccount
+  console.log(`[publish] postId=${postId} platform=${account.platform} accountId=${account.accountId} accountName=${account.accountName} postType=${(post as Record<string,unknown>).postType} hasMedia=${(post.mediaUrls?.length ?? 0) > 0}`)
+
   const accessToken = decrypt(account.accessToken)
   const accountId = account.accountId
 
@@ -165,13 +167,14 @@ export async function publishPost(postId: string) {
 
     if (!mediaRes.ok) {
       const errData = await mediaRes.json().catch(() => ({}))
-      const fbErr = (errData as Record<string, { message?: string }>).error
+      const fbErr = (errData as Record<string, { message?: string; code?: number; error_subcode?: number; type?: string }>).error
+      console.error(`[publish] IG media container failed:`, JSON.stringify(errData))
       if (mediaRes.status === 400 && fbErr?.message?.includes('instagram_content_publish')) {
         throw new Error(
           'Your Instagram account needs App Review permissions to post. Facebook page posting works immediately.'
         )
       }
-      throw new Error(`Failed to create Instagram media container: ${fbErr?.message || mediaRes.status}`)
+      throw new Error(`Failed to create Instagram media container: ${JSON.stringify(fbErr) || mediaRes.status}`)
     }
 
     const mediaData = await mediaRes.json()

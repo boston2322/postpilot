@@ -329,8 +329,9 @@ function PostDetail({
 
             {/* Failure reason */}
             {post.status === 'FAILED' && post.failureReason && (() => {
-              let err: { code?: string; message?: string; hint?: string } = {}
-              try { err = JSON.parse(post.failureReason) } catch { err = { message: post.failureReason } }
+              let err: { code?: string; message?: string; hint?: string; raw?: string } = {}
+              try { err = JSON.parse(post.failureReason) } catch { err = { message: post.failureReason, raw: post.failureReason } }
+              const showRaw = err.raw && err.raw !== err.hint
               return (
                 <div className="bg-red-50 border border-red-200 rounded-xl p-4 space-y-2">
                   <div className="flex items-center justify-between">
@@ -344,6 +345,12 @@ function PostDetail({
                   <p className="text-red-700 text-sm font-medium">{err.message || post.failureReason}</p>
                   {err.hint && (
                     <p className="text-red-500 text-xs leading-relaxed">{err.hint}</p>
+                  )}
+                  {showRaw && (
+                    <details className="mt-1">
+                      <summary className="text-[11px] text-red-400 cursor-pointer hover:text-red-600 select-none">Technical details</summary>
+                      <p className="mt-1 text-[11px] font-mono text-red-400 break-all bg-red-100 rounded p-2">{err.raw}</p>
+                    </details>
                   )}
                 </div>
               )
