@@ -34,25 +34,28 @@ async function exchangeInstagramToken(code: string, redirectUri: string) {
   const igAccounts: IgFound[] = []
   const diag: Record<string, unknown> = {}
 
-  // Step 2: Get pages + instagram_business_account in ONE request using nested fields.
-  // Page access tokens implicitly grant access to instagram_business_account even
-  // without user-level pages_read_engagement.
+  // Step 2: Get pages + both IG link types in ONE request.
+  // instagram_business_account = old-style direct link via Page Settings → Instagram
+  // connected_instagram_account = new-style link via Meta Accounts Center (Business Suite)
   const pagesRes = await fetch(
-    `https://graph.facebook.com/v18.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,name}&access_token=${data.access_token}`
+    `https://graph.facebook.com/v18.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,name},connected_instagram_account{id,username,name}&access_token=${data.access_token}`
   )
   const pagesData = await pagesRes.json()
-  const allPages: Array<{ id: string; name: string; access_token: string; instagram_business_account?: { id: string; username?: string; name?: string } }> = pagesData.data || []
-  diag.pages = allPages.map(p => ({ id: p.id, name: p.name, hasIg: !!p.instagram_business_account }))
+  const allPages: Array<{
+    id: string; name: string; access_token: string
+    instagram_business_account?: { id: string; username?: string; name?: string }
+    connected_instagram_account?: { id: string; username?: string; name?: string }
+  }> = pagesData.data || []
+  diag.pages = allPages.map(p => ({ id: p.id, name: p.name, hasIg: !!p.instagram_business_account, hasConnectedIg: !!p.connected_instagram_account }))
   console.log(`[IG OAuth] pages (with nested IG):`, diag.pages)
 
-  // Extract any Instagram accounts found directly on pages
+  // Extract any Instagram accounts found directly on pages (either link type)
   for (const page of allPages) {
-    if (page.instagram_business_account?.id) {
-      const ig = page.instagram_business_account
-      const name = ig.username || ig.name || 'Instagram Account'
-      if (!igAccounts.some(f => f.accountId === ig.id)) {
-        igAccounts.push({ accountId: ig.id, accountName: name, pageToken: page.access_token })
-        console.log(`[IG OAuth] found IG via nested field: ${name} (${ig.id}) on page ${page.id}`)
+    for (const igField of [page.instagram_business_account, page.connected_instagram_account]) {
+      if (igField?.id && !igAccounts.some(f => f.accountId === igField.id)) {
+        const name = igField.username || igField.name || 'Instagram Account'
+        igAccounts.push({ accountId: igField.id, accountName: name, pageToken: page.access_token })
+        console.log(`[IG OAuth] found IG via nested field: ${name} (${igField.id}) on page ${page.id}`)
       }
     }
   }
@@ -93,6 +96,7 @@ async function exchangeInstagramToken(code: string, redirectUri: string) {
             `https://graph.facebook.com/v18.0/${biz.id}/${edge}?fields=id,username,name&access_token=${data.access_token}`
           )
           const igData = await igRes.json()
+          diag[`${biz.id}_${edge}`] = igData.data?.length ?? igData.error?.message ?? 'empty'
           if (igData.data?.length) {
             console.log(`[IG OAuth] ${edge} for ${biz.name}: ${igData.data.length}`)
             for (const ig of igData.data) {
