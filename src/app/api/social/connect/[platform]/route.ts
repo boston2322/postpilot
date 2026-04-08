@@ -26,18 +26,26 @@ export async function GET(
   let authUrl: string
 
   switch (params.platform.toLowerCase()) {
-    case 'instagram':
     case 'facebook': {
-      const appId = params.platform === 'instagram'
-        ? process.env.INSTAGRAM_APP_ID
-        : process.env.FACEBOOK_APP_ID
-
-      // Use config_id (Facebook Login for Business configuration) instead of scope
-      // Config ID defines the approved permissions (pages_show_list + business_management)
-      // This avoids "Invalid Scopes" errors for Live apps without App Review
+      const appId = process.env.FACEBOOK_APP_ID
+      // Use config_id for Facebook — it controls the approved permissions
       const configId = process.env.META_CONFIG_ID || '2219336948472997'
-
       authUrl = `https://www.facebook.com/v18.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&config_id=${configId}&state=${state}&response_type=code`
+      break
+    }
+
+    case 'instagram': {
+      // Instagram CANNOT use config_id — config_id overrides redirect_uri, sending both
+      // Facebook and Instagram callbacks to the same URL. Use explicit scopes instead
+      // so the redirect_uri we pass is actually honoured by Facebook's OAuth.
+      const appId = process.env.INSTAGRAM_APP_ID || process.env.FACEBOOK_APP_ID
+      const scopes = [
+        'pages_show_list',
+        'instagram_basic',
+        'instagram_content_publishing',
+        'pages_read_engagement',
+      ].join(',')
+      authUrl = `https://www.facebook.com/v18.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scopes)}&state=${state}&response_type=code`
       break
     }
 

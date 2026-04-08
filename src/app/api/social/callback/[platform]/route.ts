@@ -10,13 +10,17 @@ function decodeState(state: string): { companyId: string } {
 }
 
 async function exchangeInstagramToken(code: string, redirectUri: string) {
-  // Step 1: Exchange code for Facebook User Access Token (Facebook Login for Business)
+  // Step 1: Exchange code for Facebook User Access Token
+  // Use INSTAGRAM_APP_ID if set, otherwise fall back to FACEBOOK_APP_ID
+  const appId = process.env.INSTAGRAM_APP_ID || process.env.FACEBOOK_APP_ID!
+  const appSecret = process.env.INSTAGRAM_APP_SECRET || process.env.FACEBOOK_APP_SECRET!
+
   const res = await fetch('https://graph.facebook.com/v18.0/oauth/access_token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
-      client_id: process.env.INSTAGRAM_APP_ID!,
-      client_secret: process.env.INSTAGRAM_APP_SECRET!,
+      client_id: appId,
+      client_secret: appSecret,
       redirect_uri: redirectUri,
       code,
     }),
