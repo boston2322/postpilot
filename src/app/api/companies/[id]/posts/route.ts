@@ -85,6 +85,7 @@ export async function POST(
     // Check subscription limits
     const subscription = await prisma.subscription.findUnique({
       where: { companyId: params.id },
+      select: { plan: true, status: true, postsUsedThisMonth: true },
     })
 
     if (!subscription || (subscription.status !== 'ACTIVE' && subscription.status !== 'TRIALING')) {

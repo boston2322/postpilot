@@ -446,8 +446,18 @@ export default function PostsPage() {
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [selectedPost, setSelectedPost] = useState<Post | null>(null)
 
+  async function loadPosts() {
+    const res = await fetch(`/api/companies/${companyId}/posts${statusFilter ? `?status=${statusFilter}` : ''}`)
+    if (res.ok) {
+      const data = await res.json()
+      setPosts(data.posts)
+      setTotal(data.total)
+    }
+  }
+
   async function load() {
     setLoading(true)
+    // Fetch user/company data in parallel with posts — only needed on initial load
     const [postsRes, meRes, companyRes] = await Promise.all([
       fetch(`/api/companies/${companyId}/posts${statusFilter ? `?status=${statusFilter}` : ''}`),
       fetch('/api/auth/me'),
@@ -478,9 +488,9 @@ export default function PostsPage() {
     load()
   }, [companyId, statusFilter])
 
-  // Refresh selected post data after an action
+  // After an action, only reload the posts list — user/company data hasn't changed
   function handleAction() {
-    load()
+    loadPosts()
     setSelectedPost(null)
   }
 
@@ -493,7 +503,7 @@ export default function PostsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action }),
       })
-      if (res.ok) await load()
+      if (res.ok) await loadPosts()
     } finally {
       setActionLoading(null)
     }
@@ -505,7 +515,7 @@ export default function PostsPage() {
     setActionLoading(postId)
     try {
       await fetch(`/api/companies/${companyId}/posts/${postId}`, { method: 'DELETE' })
-      await load()
+      await loadPosts()
     } finally {
       setActionLoading(null)
     }

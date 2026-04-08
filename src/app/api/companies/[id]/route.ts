@@ -27,7 +27,9 @@ export async function GET(
       members: {
         include: { user: { select: { id: true, email: true, name: true, avatar: true } } },
       },
-      socialAccounts: true,
+      socialAccounts: {
+        select: { id: true, platform: true, accountName: true, accountId: true, isActive: true },
+      },
       _count: { select: { posts: true } },
     },
   })

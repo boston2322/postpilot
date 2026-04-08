@@ -57,16 +57,18 @@ export async function POST(
       return NextResponse.json({ error: 'Invalid role' }, { status: 400 })
     }
 
-    // Check seat limit
-    const subscription = await prisma.subscription.findUnique({
-      where: { companyId: params.id },
-    })
+    // Check seat limit + look up target user in parallel
+    const [subscription, targetUser] = await Promise.all([
+      prisma.subscription.findUnique({
+        where: { companyId: params.id },
+        select: { plan: true },
+      }),
+      prisma.user.findUnique({ where: { email }, select: { id: true, email: true, name: true, avatar: true } }),
+    ])
 
     if (subscription) {
       const planData = PLANS[subscription.plan as keyof typeof PLANS]
-      const currentCount = await prisma.companyMember.count({
-        where: { companyId: params.id },
-      })
+      const currentCount = await prisma.companyMember.count({ where: { companyId: params.id } })
       if (currentCount >= planData.seats) {
         return NextResponse.json(
           { error: `Seat limit of ${planData.seats} reached for your plan` },
@@ -75,7 +77,6 @@ export async function POST(
       }
     }
 
-    const targetUser = await prisma.user.findUnique({ where: { email } })
     if (!targetUser) {
       return NextResponse.json({ error: 'No user found with that email' }, { status: 404 })
     }

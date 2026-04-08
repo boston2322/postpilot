@@ -37,14 +37,15 @@ export async function GET(
     }
 
     case 'instagram': {
-      // Use direct scopes (no config_id) so the token includes pages_read_engagement,
-      // which is required to access the instagram_business_account field on a Facebook Page.
+      // Use config_id (same as Facebook) so the token includes business_management +
+      // pages_show_list. We find the Instagram account via owned_instagram_accounts
+      // on the business, which avoids needing instagram_basic / pages_read_engagement.
       // platform='instagram' in state tells the callback to run exchangeInstagramToken.
       const state = encodeState(companyId, 'instagram')
       const redirectUri = `${APP_URL}/api/social/callback/facebook`
       const appId = process.env.INSTAGRAM_APP_ID || process.env.FACEBOOK_APP_ID
-      const scopes = 'pages_show_list,pages_read_engagement,instagram_content_publish,business_management'
-      authUrl = `https://www.facebook.com/v18.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scopes)}&state=${state}&response_type=code`
+      const configId = process.env.META_CONFIG_ID || '2219336948472997'
+      authUrl = `https://www.facebook.com/v18.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&config_id=${configId}&state=${state}&response_type=code`
       break
     }
 
