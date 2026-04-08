@@ -64,10 +64,14 @@ export async function publishPost(postId: string) {
   // ── INSTAGRAM ───────────────────────────────────────────────────────────────
   if (account.platform === 'INSTAGRAM') {
     const igAccountId = accountId
-    // Direct Instagram OAuth tokens (instagram_business_content_publish) use graph.instagram.com.
-    // Facebook Business Login tokens use graph.facebook.com. We use graph.instagram.com as it
-    // works for both Business Login tokens (via ig_user_id) and direct Instagram OAuth tokens.
-    const igBase = `https://graph.instagram.com/v21.0/${igAccountId}`
+    // Instagram direct OAuth tokens start with "IGQ"/"IGd" → use graph.instagram.com
+    // Facebook Business Login tokens start with "EAA" → use graph.facebook.com
+    // This handles both connection paths so posting works regardless of how the account was connected.
+    const isFbToken = accessToken.startsWith('EAA') || accessToken.startsWith('EAAB')
+    const igBase = isFbToken
+      ? `https://graph.facebook.com/v18.0/${igAccountId}`
+      : `https://graph.instagram.com/v21.0/${igAccountId}`
+    console.log(`[publish] IG token type: ${isFbToken ? 'Facebook' : 'Instagram'}, using ${isFbToken ? 'graph.facebook.com' : 'graph.instagram.com'}`)
     const postTypeValue = (post as Record<string, unknown>).postType as string | undefined
 
     function throwIgError(prefix: string, err: { message?: string } | undefined, status: number): never {
@@ -152,7 +156,7 @@ export async function publishPost(postId: string) {
     if (!mediaRes.ok) {
       const errData = await mediaRes.json().catch(() => ({}))
       const fbErr = (errData as Record<string, { message?: string; code?: number; error_subcode?: number; type?: string }>).error
-      console.error(`[publish] IG media container failed:`, JSON.stringify(errData))
+      console.error(`[publish] IG media container failed (tokenType=${isFbToken ? 'FB' : 'IG'}):`, JSON.stringify(errData))
       throw new Error(`Failed to create Instagram media container: ${JSON.stringify(fbErr) || mediaRes.status}`)
     }
 
