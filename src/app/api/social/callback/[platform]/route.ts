@@ -205,9 +205,9 @@ async function exchangeInstagramDirectToken(code: string, redirectUri: string) {
   const accessToken = llData.access_token || data.access_token
   const expiresIn = llData.expires_in
 
-  // Step 3: Get user profile
+  // Step 3: Get user profile (no version prefix — required for instagram.com direct OAuth tokens)
   const meRes = await fetch(
-    `https://graph.instagram.com/v18.0/me?fields=id,username,name&access_token=${accessToken}`
+    `https://graph.instagram.com/me?fields=id,username,name&access_token=${accessToken}`
   )
   const me = await meRes.json()
 
