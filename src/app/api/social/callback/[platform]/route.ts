@@ -198,17 +198,24 @@ async function exchangeInstagramDirectToken(code: string, redirectUri: string) {
   // user_id may or may not be present depending on the API version
   let userId: string | undefined = data.user_id?.toString() || undefined
 
-  // Step 2: Exchange for long-lived token (60 days)
-  const llRes = await fetch(
-    `https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${appSecret}&access_token=${data.access_token}`
-  )
-  const llData = await llRes.json()
-  if (!llData.access_token) {
-    console.error('[IG OAuth] Long-lived token exchange failed:', JSON.stringify(llData))
-    throw new Error(`Instagram long-lived token exchange failed: ${JSON.stringify(llData)}`)
+  // Step 2: Exchange for long-lived token (60 days).
+  // URL-encode the token — it may contain +/=/special chars that break the query string.
+  let accessToken = data.access_token
+  let expiresIn: number | undefined = 3600 // default: treat as 1-hour short-lived
+  try {
+    const llUrl = `https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${encodeURIComponent(appSecret)}&access_token=${encodeURIComponent(data.access_token)}`
+    const llRes = await fetch(llUrl)
+    const llData = await llRes.json()
+    if (llData.access_token) {
+      accessToken = llData.access_token
+      expiresIn = llData.expires_in ?? 5183944 // 60 days
+      console.log('[IG OAuth] Got long-lived token, expires_in:', expiresIn)
+    } else {
+      console.warn('[IG OAuth] Long-lived exchange failed, using short-lived token (1h):', JSON.stringify(llData))
+    }
+  } catch (e) {
+    console.error('[IG OAuth] Long-lived exchange error, using short-lived token:', e)
   }
-  const accessToken = llData.access_token
-  const expiresIn = llData.expires_in
 
   // Step 3: If we don't have user_id yet, get it from Facebook's token debug endpoint.
   // graph.instagram.com rejects GET /me with code 100 for Business Login tokens,
