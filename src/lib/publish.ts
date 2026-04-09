@@ -74,7 +74,7 @@ export async function publishPost(postId: string) {
     console.log(`[publish] IG token type: ${isFbToken ? 'Facebook' : 'Instagram'}, using ${isFbToken ? 'graph.facebook.com' : 'graph.instagram.com'}`)
     const postTypeValue = (post as Record<string, unknown>).postType as string | undefined
 
-    function throwIgError(prefix: string, err: { message?: string } | undefined, status: number): never {
+    const throwIgError = (prefix: string, err: { message?: string } | undefined, status: number): never => {
       throw new Error(`${prefix}: ${err?.message || status}`)
     }
 
