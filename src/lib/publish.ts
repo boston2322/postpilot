@@ -78,6 +78,15 @@ export async function publishPost(postId: string) {
       throw new Error(`${prefix}: ${err?.message || status}`)
     }
 
+    // Instagram Business Login API requires token in Authorization header.
+    // Facebook Graph API accepts token in body. Handle both.
+    const igHeaders: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (!isFbToken) {
+      igHeaders['Authorization'] = `Bearer ${accessToken}`
+    }
+    const withToken = (body: Record<string, unknown>) =>
+      isFbToken ? { ...body, access_token: accessToken } : body
+
     if (postTypeValue === 'CAROUSEL') {
       const rawSlides = (post as Record<string, unknown>).slides
       const slides: Slide[] = Array.isArray(rawSlides) ? (rawSlides as Slide[]) : []
@@ -89,12 +98,8 @@ export async function publishPost(postId: string) {
 
         const containerRes = await fetch(`${igBase}/media`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            image_url: slide.mediaUrl,
-            is_carousel_item: true,
-            access_token: accessToken,
-          }),
+          headers: igHeaders,
+          body: JSON.stringify(withToken({ image_url: slide.mediaUrl, is_carousel_item: true })),
         })
 
         if (!containerRes.ok) {
@@ -108,13 +113,8 @@ export async function publishPost(postId: string) {
 
       const carouselRes = await fetch(`${igBase}/media`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          media_type: 'CAROUSEL',
-          children: containerIds.join(','),
-          caption: fullContent,
-          access_token: accessToken,
-        }),
+        headers: igHeaders,
+        body: JSON.stringify(withToken({ media_type: 'CAROUSEL', children: containerIds.join(','), caption: fullContent })),
       })
 
       if (!carouselRes.ok) {
@@ -125,8 +125,8 @@ export async function publishPost(postId: string) {
       const carouselData = await carouselRes.json()
       const publishRes = await fetch(`${igBase}/media_publish`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ creation_id: carouselData.id, access_token: accessToken }),
+        headers: igHeaders,
+        body: JSON.stringify(withToken({ creation_id: carouselData.id })),
       })
 
       if (!publishRes.ok) {
@@ -145,12 +145,8 @@ export async function publishPost(postId: string) {
 
     const mediaRes = await fetch(`${igBase}/media`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        image_url: post.mediaUrls[0],
-        caption: fullContent,
-        access_token: accessToken,
-      }),
+      headers: igHeaders,
+      body: JSON.stringify(withToken({ image_url: post.mediaUrls[0], caption: fullContent })),
     })
 
     if (!mediaRes.ok) {
@@ -163,8 +159,8 @@ export async function publishPost(postId: string) {
     const mediaData = await mediaRes.json()
     const publishRes = await fetch(`${igBase}/media_publish`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ creation_id: mediaData.id, access_token: accessToken }),
+      headers: igHeaders,
+      body: JSON.stringify(withToken({ creation_id: mediaData.id })),
     })
 
     if (!publishRes.ok) {
