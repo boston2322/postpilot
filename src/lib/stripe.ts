@@ -52,7 +52,8 @@ export async function createCheckoutSession(
   companyId: string,
   plan: string,
   userId: string,
-  customerEmail: string
+  customerEmail: string,
+  withTrial = false
 ): Promise<string> {
   const planKey = plan.toUpperCase() as keyof typeof PLANS
   const planData = PLANS[planKey]
@@ -63,7 +64,6 @@ export async function createCheckoutSession(
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://postpilot-v2-three.vercel.app'
 
-  // Use payment links — works without needing Stripe API keys configured
   const stripeInstance = getStripe()
   if (stripeInstance && planData.priceId) {
     // Full API checkout session when secret key + price IDs are set
@@ -73,13 +73,15 @@ export async function createCheckoutSession(
       customer_email: customerEmail,
       line_items: [{ price: planData.priceId, quantity: 1 }],
       metadata: { companyId, userId, plan: planKey },
-      success_url: `${appUrl}/company/${companyId}?subscribed=1`,
-      cancel_url: `${appUrl}/dashboard`,
+      subscription_data: withTrial ? { trial_period_days: 7 } : undefined,
+      success_url: `${appUrl}/dashboard?subscribed=1`,
+      cancel_url: `${appUrl}/onboarding`,
     })
     return session.url!
   }
 
   // Fallback: redirect to Stripe payment link with prefilled email & reference
+  // Note: payment links don't support trials — user pays immediately
   const baseLink = PAYMENT_LINKS[planKey]
   const params = new URLSearchParams({
     prefilled_email: customerEmail,

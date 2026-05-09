@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 
 type Company = {
   id: string
@@ -25,6 +26,7 @@ type User = {
 }
 
 export default function DashboardPage() {
+  const router = useRouter()
   const [companies, setCompanies] = useState<Company[]>([])
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
@@ -41,6 +43,11 @@ export default function DashboardPage() {
       }
       if (companiesRes.ok) {
         const { companies } = await companiesRes.json()
+        // New users with no company yet → send to onboarding to choose a plan
+        if (companies.length === 0) {
+          router.replace('/onboarding')
+          return
+        }
         setCompanies(companies)
       }
       setLoading(false)

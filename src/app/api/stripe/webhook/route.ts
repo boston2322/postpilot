@@ -43,13 +43,15 @@ export async function POST(request: NextRequest) {
           session.subscription as string
         )
 
+        const subStatus = stripeSubscription.status === 'trialing' ? 'TRIALING' : 'ACTIVE'
+
         await prisma.subscription.upsert({
           where: { companyId },
           update: {
             stripeCustomerId: session.customer as string,
             stripeSubscriptionId: stripeSubscription.id,
             plan: plan as any,
-            status: 'ACTIVE',
+            status: subStatus as any,
             currentPeriodStart: new Date(stripeSubscription.current_period_start * 1000),
             currentPeriodEnd: new Date(stripeSubscription.current_period_end * 1000),
             postsUsedThisMonth: 0,
@@ -59,7 +61,7 @@ export async function POST(request: NextRequest) {
             stripeCustomerId: session.customer as string,
             stripeSubscriptionId: stripeSubscription.id,
             plan: plan as any,
-            status: 'ACTIVE',
+            status: subStatus as any,
             currentPeriodStart: new Date(stripeSubscription.current_period_start * 1000),
             currentPeriodEnd: new Date(stripeSubscription.current_period_end * 1000),
             postsUsedThisMonth: 0,
