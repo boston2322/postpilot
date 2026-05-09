@@ -209,12 +209,12 @@ export default function SettingsPage() {
     await load()
   }
 
-  async function handleCheckout(plan: string) {
+  async function handleCheckout(plan: string, withTrial = false) {
     setCheckoutLoading(plan)
     const res = await fetch('/api/stripe/checkout', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ companyId, plan }),
+      body: JSON.stringify({ companyId, plan, withTrial }),
     })
     if (res.ok) {
       const { url } = await res.json()
@@ -575,6 +575,32 @@ export default function SettingsPage() {
       {/* Subscription Tab */}
       {activeTab === 'subscription' && (
         <div className="space-y-4">
+
+          {/* ── No subscription yet — Growth trial CTA ── */}
+          {!subscription && (
+            <div className="bg-gradient-to-br from-indigo-600 to-indigo-700 rounded-2xl p-6 text-white">
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <span className="text-2xl">🚀</span>
+                </div>
+                <div className="flex-1">
+                  <h2 className="text-lg font-bold mb-1">Start your 7-day free trial</h2>
+                  <p className="text-indigo-200 text-sm mb-4">
+                    Try PostPilot on the Growth plan — 60 posts/mo, 3 companies, 5 team seats.
+                    No charge for 7 days. Card required. Cancel anytime.
+                  </p>
+                  <button
+                    onClick={() => handleCheckout('GROWTH', true)}
+                    disabled={checkoutLoading === 'GROWTH'}
+                    className="bg-white text-indigo-700 font-semibold px-5 py-2.5 rounded-xl text-sm hover:bg-indigo-50 transition-colors disabled:opacity-60"
+                  >
+                    {checkoutLoading === 'GROWTH' ? 'Loading...' : 'Start free trial on Growth →'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {subscription ? (
             <div className="bg-white rounded-2xl border border-slate-200 p-6">
               <div className="flex items-start justify-between mb-4">

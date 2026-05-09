@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { companyId, plan } = body
+    const { companyId, plan, withTrial = false } = body
 
     if (!companyId || !plan) {
       return NextResponse.json({ error: 'companyId and plan are required' }, { status: 400 })
@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Only company owner can manage billing' }, { status: 403 })
     }
 
-    const url = await createCheckoutSession(companyId, plan, session.id, session.email)
+    const url = await createCheckoutSession(companyId, plan, session.id, session.email, withTrial)
 
     return NextResponse.json({ url })
   } catch (error) {
