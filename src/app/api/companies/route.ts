@@ -41,6 +41,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Company name is required' }, { status: 400 })
     }
 
+    // Enforce 1-company limit per user
+    const existing = await prisma.companyMember.count({
+      where: { userId: session.id },
+    })
+    if (existing >= 1) {
+      return NextResponse.json({ error: 'You can only create one company on a free account. Start a trial to create more.' }, { status: 403 })
+    }
+
     const company = await prisma.company.create({
       data: {
         name,

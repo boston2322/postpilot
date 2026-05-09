@@ -127,15 +127,17 @@ export default function DashboardPage() {
       {/* Companies List */}
       <div className="mb-6 flex items-center justify-between">
         <h2 className="text-lg font-semibold text-slate-900">Your Companies</h2>
-        <Link
-          href="/dashboard/companies/new"
-          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          New Company
-        </Link>
+        {companies.length === 0 && (
+          <Link
+            href="/dashboard/companies/new"
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            New Company
+          </Link>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -197,18 +199,20 @@ export default function DashboardPage() {
           </div>
         ))}
 
-        {/* Create Company Card */}
-        <Link
-          href="/dashboard/companies/new"
-          className="bg-white rounded-xl border-2 border-dashed border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/30 p-5 flex flex-col items-center justify-center gap-3 text-slate-400 hover:text-indigo-600 transition-all cursor-pointer min-h-[200px]"
-        >
-          <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-          </div>
-          <span className="font-medium text-sm">Create New Company</span>
-        </Link>
+        {/* Create Company Card — only shown if they don't have one yet */}
+        {companies.length === 0 && (
+          <Link
+            href="/dashboard/companies/new"
+            className="bg-white rounded-xl border-2 border-dashed border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/30 p-5 flex flex-col items-center justify-center gap-3 text-slate-400 hover:text-indigo-600 transition-all cursor-pointer min-h-[200px]"
+          >
+            <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+            </div>
+            <span className="font-medium text-sm">Create New Company</span>
+          </Link>
+        )}
       </div>
 
       {/* Empty state */}

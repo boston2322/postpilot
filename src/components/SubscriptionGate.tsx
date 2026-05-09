@@ -8,19 +8,23 @@ type Props = {
   children: React.ReactNode
 }
 
+// These sub-paths require an active subscription to access
+const GATED_SEGMENTS = ['/posts', '/calendar', '/automations', '/team']
+
 export default function SubscriptionGate({ companyId, subscription, children }: Props) {
   const pathname = usePathname()
   const router = useRouter()
 
-  const isSettingsPage = pathname.includes('/settings')
   const hasActiveSub = subscription?.status === 'ACTIVE' || subscription?.status === 'TRIALING'
 
-  // Settings page is always allowed through (so they can subscribe)
-  if (isSettingsPage || hasActiveSub) {
+  // Always allow: company overview (/company/[id]) and settings
+  const isGatedPage = GATED_SEGMENTS.some((seg) => pathname.includes(seg))
+
+  if (!isGatedPage || hasActiveSub) {
     return <>{children}</>
   }
 
-  // No subscription — show a full-page gate
+  // Trying to access a feature page without a subscription
   return (
     <div className="flex flex-col items-center justify-center h-full p-8 text-center">
       <div className="w-16 h-16 bg-indigo-100 rounded-2xl flex items-center justify-center mb-5">
@@ -30,7 +34,7 @@ export default function SubscriptionGate({ companyId, subscription, children }: 
         </svg>
       </div>
 
-      <h2 className="text-xl font-bold text-slate-900 mb-2">Start your free trial to continue</h2>
+      <h2 className="text-xl font-bold text-slate-900 mb-2">Start your free trial to unlock this</h2>
       <p className="text-slate-500 text-sm mb-6 max-w-sm">
         Try PostPilot free for 7 days on the Growth plan — no charge until day 8. Cancel anytime.
       </p>
