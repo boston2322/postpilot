@@ -61,11 +61,11 @@ async function main() {
     update: {},
     create: {
       companyId: company.id,
-      plan: 'STARTER',
+      plan: 'PRO',
       status: 'ACTIVE',
       postsUsedThisMonth: 0,
       currentPeriodStart: new Date(),
-      currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      currentPeriodEnd: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
     },
   })
 

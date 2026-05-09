@@ -41,6 +41,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Company name is required' }, { status: 400 })
     }
 
+    const trialEnd = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+
     const company = await prisma.company.create({
       data: {
         name,
@@ -50,6 +52,14 @@ export async function POST(request: NextRequest) {
             userId: session.id,
             role: 'OWNER',
             canApprove: true,
+          },
+        },
+        subscription: {
+          create: {
+            plan: 'STARTER',
+            status: 'TRIALING',
+            currentPeriodStart: new Date(),
+            currentPeriodEnd: trialEnd,
           },
         },
       },

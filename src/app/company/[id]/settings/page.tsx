@@ -32,6 +32,7 @@ type Subscription = {
   status: string
   postsUsedThisMonth: number
   currentPeriodEnd: string | null
+  currentPeriodStart: string | null
   stripeCustomerId: string | null
 }
 
@@ -604,7 +605,14 @@ export default function SettingsPage() {
                     }
                   </p>
                 </div>
-                {subscription.currentPeriodEnd ? (
+                {subscription.status === 'TRIALING' && subscription.currentPeriodEnd ? (
+                  <div className="bg-amber-50 rounded-xl p-3 border border-amber-200">
+                    <p className="text-xs text-amber-600 mb-0.5">Trial Ends</p>
+                    <p className="font-semibold text-amber-800">
+                      {Math.max(0, Math.ceil((new Date(subscription.currentPeriodEnd).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))} days left
+                    </p>
+                  </div>
+                ) : subscription.currentPeriodEnd ? (
                   <div className="bg-slate-50 rounded-xl p-3">
                     <p className="text-xs text-slate-500 mb-0.5">Renews</p>
                     <p className="font-semibold text-slate-900">
@@ -613,12 +621,17 @@ export default function SettingsPage() {
                   </div>
                 ) : (
                   <div className="bg-slate-50 rounded-xl p-3">
-                    <p className="text-xs text-slate-500 mb-0.5">Billing</p>
-                    <p className="font-semibold text-slate-900">No charge</p>
+                    <p className="text-xs text-slate-500 mb-0.5">Renews</p>
+                    <p className="font-semibold text-slate-900">—</p>
                   </div>
                 )}
               </div>
 
+              {subscription.status === 'TRIALING' && subscription.currentPeriodEnd && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 text-amber-800 text-sm">
+                  ⏳ You&apos;re on a 7-day free trial. Choose a plan below before it expires to keep full access.
+                </div>
+              )}
               {subscription.status === 'PAST_DUE' && (
                 <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 mb-4 text-yellow-800 text-sm">
                   ⚠️ Your payment is past due. Please update your payment method to keep your account active.
@@ -631,7 +644,7 @@ export default function SettingsPage() {
               )}
 
               {/* Stripe portal — only for paying plans with a Stripe customer */}
-              {subscription.plan !== 'FREE' && subscription.stripeCustomerId && (
+              {subscription.stripeCustomerId && (
                 <button
                   onClick={handlePortal}
                   disabled={portalLoading}
@@ -640,11 +653,6 @@ export default function SettingsPage() {
                   {portalLoading ? 'Opening...' : 'Manage Billing, Card & Invoices →'}
                 </button>
               )}
-              {subscription.plan === 'FREE' && (
-                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-emerald-700 text-sm text-center">
-                  🎁 You&apos;re on a complimentary Free plan — no billing required.
-                </div>
-              )}
             </div>
           ) : (
             <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 text-yellow-800 text-sm">
@@ -652,10 +660,10 @@ export default function SettingsPage() {
             </div>
           )}
 
-          {/* Plan cards — hide FREE since it's admin-assigned only */}
+          {/* Plan cards — FREE is admin-assigned only, never shown here */}
           <div>
             <h2 className="text-base font-semibold text-slate-900 mb-3">
-              {subscription?.status === 'ACTIVE' || subscription?.status === 'TRIALING' ? 'Change Plan' : 'Choose a Plan'}
+              {subscription?.status === 'TRIALING' ? 'Choose a Plan to Continue After Trial' : subscription?.status === 'ACTIVE' ? 'Change Plan' : 'Choose a Plan'}
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {Object.entries(PLANS).filter(([key]) => key !== 'FREE').map(([key, plan]) => (

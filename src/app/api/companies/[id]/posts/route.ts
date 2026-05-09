@@ -85,11 +85,16 @@ export async function POST(
     // Check subscription limits
     const subscription = await prisma.subscription.findUnique({
       where: { companyId: params.id },
-      select: { plan: true, status: true, postsUsedThisMonth: true },
+      select: { plan: true, status: true, postsUsedThisMonth: true, currentPeriodEnd: true },
     })
 
     if (!subscription || (subscription.status !== 'ACTIVE' && subscription.status !== 'TRIALING')) {
-      return NextResponse.json({ error: 'Active subscription required' }, { status: 403 })
+      return NextResponse.json({ error: 'Active subscription required to publish posts. Please choose a plan.' }, { status: 403 })
+    }
+
+    // Check if trial has expired
+    if (subscription.status === 'TRIALING' && subscription.currentPeriodEnd && subscription.currentPeriodEnd < new Date()) {
+      return NextResponse.json({ error: 'Your 7-day free trial has expired. Please choose a plan to continue.' }, { status: 403 })
     }
 
     const planData = PLANS[subscription.plan as keyof typeof PLANS]
